@@ -1,0 +1,14 @@
+{
+  "name": "risk-online-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Serveur WebSocket du Risk en ligne (route les messages vers GameHost)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

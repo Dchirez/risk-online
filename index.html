@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Risk en ligne</title>
+  <meta name="description" content="Le jeu de plateau Risk, jouable en ligne de 5 à 7 joueurs via un lien d’invitation." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎲</text></svg>" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- ═══════════════ Accueil ═══════════════ -->
+  <section id="screen-home" class="screen">
+    <div class="home-card">
+      <h1>🎲 Risk en ligne</h1>
+      <p class="muted">Conquérez le monde à 5, 6 ou 7 joueurs. Les places vides sont prises par des bots.</p>
+
+      <label class="field">
+        <span>Votre pseudo</span>
+        <input id="home-name" maxlength="16" placeholder="ex. Napoleon_2" autocomplete="nickname" />
+        <small class="muted">2 à 16 caractères : lettres, chiffres, _ ou - (pas d’espace, pour les mentions @pseudo).</small>
+      </label>
+
+      <div class="home-columns">
+        <div class="home-block">
+          <h2>Créer une partie</h2>
+          <label class="field"><span>Nombre de joueurs</span>
+            <select id="home-max">
+              <option value="5">5 joueurs</option>
+              <option value="6" selected>6 joueurs</option>
+              <option value="7">7 joueurs</option>
+            </select>
+          </label>
+          <button id="home-create" class="btn primary">Créer et obtenir le lien</button>
+        </div>
+        <div class="home-block">
+          <h2>Rejoindre une partie</h2>
+          <label class="field"><span>Code de la partie</span>
+            <input id="home-code" maxlength="6" placeholder="ex. K7Q2ZP" style="text-transform:uppercase" />
+          </label>
+          <button id="home-join" class="btn">Rejoindre</button>
+        </div>
+      </div>
+      <p id="home-error" class="error" hidden></p>
+      <details class="muted small">
+        <summary>Mode de test sans serveur</summary>
+        <p>Pour l’instant, l’hôte de la partie tourne dans l’onglet du créateur. Le lien d’invitation fonctionne
+          entre plusieurs onglets du <strong>même navigateur</strong> (canal BroadcastChannel). Le vrai serveur
+          WebSocket se branchera plus tard sans changer l’interface (voir <code>docs/ARCHITECTURE.md</code>).</p>
+      </details>
+    </div>
+  </section>
+
+  <!-- ═══════════════ Lobby ═══════════════ -->
+  <section id="screen-lobby" class="screen" hidden>
+    <div class="home-card wide">
+      <h1>Salle d’attente</h1>
+      <div class="invite">
+        <span>Code : <strong id="lobby-code"></strong></span>
+        <input id="lobby-link" readonly />
+        <button id="lobby-copy" class="btn small">Copier le lien</button>
+      </div>
+      <p class="muted small">Partagez ce lien. Les places non prises au démarrage seront occupées par des bots.</p>
+      <ul id="lobby-players" class="lobby-players"></ul>
+      <div class="lobby-actions">
+        <label class="field inline"><span>Places</span>
+          <select id="lobby-max"><option value="5">5</option><option value="6">6</option><option value="7">7</option></select>
+        </label>
+        <label class="field inline"><span>Vitesse des bots</span>
+          <select id="lobby-speed">
+            <option value="1500">Lente</option>
+            <option value="700" selected>Normale</option>
+            <option value="200">Rapide</option>
+            <option value="0">Instantanée</option>
+          </select>
+        </label>
+        <button id="lobby-add-bot" class="btn small">+ Bot</button>
+        <button id="lobby-add-local" class="btn small" title="Un second joueur humain dans cet onglet (chacun son tour au clavier)">+ Joueur local</button>
+        <span class="spacer"></span>
+        <button id="lobby-leave" class="btn small">Quitter</button>
+        <button id="lobby-start" class="btn primary">Démarrer la partie</button>
+      </div>
+      <p id="lobby-error" class="error" hidden></p>
+    </div>
+  </section>
+
+  <!-- ═══════════════ Partie ═══════════════ -->
+  <section id="screen-game" class="screen game" hidden>
+    <div class="topbar">
+      <div id="game-header" class="game-header"></div>
+      <div id="local-switcher" class="local-switcher" hidden></div>
+    </div>
+    <div class="map-area">
+      <div id="map"></div>
+      <div id="toast" class="toast" hidden></div>
+    </div>
+    <div class="bottom">
+      <div id="panels" class="panels"></div>
+      <div id="chat" class="chat"></div>
+    </div>
+    <div id="modal" class="modal" hidden></div>
+  </section>
+
+  <script type="module" src="src/ui/app.js"></script>
+</body>
+</html>
