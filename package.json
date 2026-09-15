@@ -1,0 +1,13 @@
+{
+  "name": "risk-online",
+  "version": "0.1.0",
+  "description": "Risk multijoueur en ligne — frontend statique (GitHub Pages) + hôte de partie réutilisable côté serveur",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "dev": "npx --yes serve -l 5180 .",
+    "server": "node server/index.js"
+  },
+  "license": "MIT"
+}

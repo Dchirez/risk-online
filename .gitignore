@@ -1,0 +1,5 @@
+# Données sources Natural Earth (re-téléchargeables, ~5 Mo) et dépendances de l'outil de carte
+tools/cache/
+tools/node_modules/
+tools/package-lock.json
+node_modules/

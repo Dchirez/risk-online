@@ -1,0 +1,11 @@
+{
+  "name": "risk-online-tools",
+  "private": true,
+  "type": "module",
+  "description": "Outils de construction de la carte (non embarques dans le site)",
+  "dependencies": {
+    "polygon-clipping": "^0.15.7",
+    "polylabel": "^2.1.0",
+    "simplify-js": "^1.2.4"
+  }
+}
