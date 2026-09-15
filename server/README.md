@@ -9,7 +9,7 @@ Testé en local (deux onglets, création, jonction par lien, bots, chat public e
 ```bash
 cd server
 npm install
-PORT=8080 FRONT_URL=https://dchirez.github.io/risk-online/ node index.js
+PORT=8080 FRONT_URL=https://dchirez.fr/risk-online/ node index.js
 ```
 
 Côté frontend : `src/config.js` → `wsUrl: 'wss://<domaine>/ws'`.

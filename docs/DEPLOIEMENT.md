@@ -32,9 +32,9 @@ mais alors seuls des onglets du même navigateur peuvent se rejoindre. Pour joue
 2. Sur GitHub : **Settings → Pages → Build and deployment → Source : Deploy from a branch**,
    branche `main`, dossier `/ (root)`. Enregistrer.
 
-3. Après une à deux minutes le site est servi sur
-   `https://dchirez.github.io/risk-online/`.
-   Les liens d'invitation auront la forme `https://dchirez.github.io/risk-online/?game=K7Q2ZP`.
+3. Le compte GitHub a déjà un domaine personnalisé (dchirez.fr) : le site est donc servi sur
+   `https://dchirez.fr/risk-online/`.
+   Les liens d'invitation auront la forme `https://dchirez.fr/risk-online/?game=K7Q2ZP`.
 
 4. **Brancher le serveur** : rien à faire, `src/config.js` contient déjà l'adresse
    de production, utilisée automatiquement dès que le site n'est pas ouvert sur
@@ -71,7 +71,7 @@ npm install            # installe uniquement "ws"
 Test rapide :
 
 ```bash
-PORT=8080 FRONT_URL=https://dchirez.github.io/risk-online/ node index.js
+PORT=8080 FRONT_URL=https://dchirez.fr/risk-online/ node index.js
 # → Serveur Risk en écoute sur ws://localhost:8080 (front : https://…)
 ```
 
@@ -95,7 +95,7 @@ After=network.target
 User=www-data
 WorkingDirectory=/opt/risk-online/server
 Environment=PORT=8080
-Environment=FRONT_URL=https://dchirez.github.io/risk-online/
+Environment=FRONT_URL=https://dchirez.fr/risk-online/
 ExecStart=/usr/bin/node index.js
 Restart=always
 RestartSec=3

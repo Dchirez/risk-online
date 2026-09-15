@@ -68,4 +68,5 @@ Le site est statique : publier la racine du dépôt sur GitHub Pages (Settings �
 Pages → branche `main`, dossier racine), aucune étape de build. Le serveur de
 parties (`server/`, Node + `ws`) se lance sur une machine externe derrière un
 reverse proxy TLS, puis on renseigne son adresse `wss://` dans `src/config.js`.
+Site en ligne : <https://dchirez.fr/risk-online/> (GitHub Pages, dépôt `dchirez/risk-online`).
 Procédure détaillée : [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md).
