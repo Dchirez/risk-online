@@ -1,5 +1,5 @@
 /**
- * Construit src/core/mapData.js à partir des données Natural Earth (domaine public).
+ * Construit src/core/maps/world.js à partir des données Natural Earth (domaine public).
  *
  *   cd tools && node build-map.mjs
  *
@@ -125,7 +125,7 @@ const CONTINENTS = {
   NA: { name: 'Amérique du Nord', bonus: 9, color: '#d9a92c', label: [-142, 22] },
   SA: { name: 'Amérique du Sud', bonus: 4, color: '#e8792d', label: [-28, -28] },
   EU: { name: 'Europe', bonus: 8, color: '#3d5fd0', label: [-26, 50] },
-  AF: { name: 'Afrique', bonus: 6, color: '#b03aa0', label: [-4, -34] },
+  AF: { name: 'Afrique', bonus: 7, color: '#b03aa0', label: [-4, -34] },
   AS: { name: 'Asie', bonus: 12, color: '#3fa34d', label: [152, 12] },
   OC: { name: 'Océanie', bonus: 3, color: '#6b6f78', label: [170, -44] },
 };
@@ -356,5 +356,5 @@ const header = `/**
  */
 export const MAP_DATA = `;
 const out = header + JSON.stringify(data) + ';\n';
-writeFileSync(new URL('../src/core/mapData.js', import.meta.url), out);
-console.log(`\n→ src/core/mapData.js (${Math.round(out.length / 1024)} Ko)`);
+writeFileSync(new URL('../src/core/maps/world.js', import.meta.url), out);
+console.log(`\n→ src/core/maps/world.js (${Math.round(out.length / 1024)} Ko)`);

@@ -252,6 +252,10 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 0;
 .worldmap .ocean { fill: #d8c48f; }
 .worldmap .ocean-label { font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: 26px; letter-spacing: .25em; fill: #7d6a3c; text-anchor: middle; opacity: .8; }
 .worldmap .continent-halo { fill: none; stroke-width: 11; stroke-linejoin: round; stroke-opacity: .55; }
+.worldmap .zone { fill: #b9a87a; fill-opacity: .55; stroke: #8a7a4e; stroke-width: 1; stroke-dasharray: 8 6; }
+.worldmap .zone-label { font-family: Georgia, 'Times New Roman', serif; font-size: 18px; letter-spacing: .3em; fill: #5a4a26; text-anchor: middle; opacity: .8; }
+.worldmap .ridge { fill: #3a2c17; stroke: #1e1710; stroke-width: .8; stroke-linejoin: round; }
+.worldmap .ridge-snow { fill: #f2e7cc; opacity: .8; }
 .worldmap .sea-route { stroke: #3b2f14; stroke-width: 1.6; stroke-dasharray: 6 5; stroke-opacity: .6; }
 
 /* Territoires : couleur du continent ; le propriétaire se lit sur la pastille.

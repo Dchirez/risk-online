@@ -6,7 +6,7 @@
  *
  * Purement décoratif : les valeurs viennent de l'événement COMBAT, jamais du client.
  */
-import { TERRITORIES } from '../core/map.js';
+import { mapOf } from '../core/map.js';
 import { getPlayer, playerHex } from '../core/state.js';
 
 const ROLL_MS = 650; // durée du roulement
@@ -45,6 +45,7 @@ export class DiceOverlay {
     this.lastShown = now;
     this.clearTimers();
 
+    this.map = mapOf(state);
     const attacker = getPlayer(state, combat.attackerId);
     const defender = getPlayer(state, combat.defenderId);
     this.el.innerHTML = `
@@ -59,7 +60,7 @@ export class DiceOverlay {
         <div class="dice-row">${combat.defenderDice.map(() => dieHtml('def')).join('')}</div>
         <div class="dice-loss"></div>
       </div>
-      <div class="dice-place">${esc(TERRITORIES[combat.to]?.name ?? '')}</div>`;
+      <div class="dice-place">${esc(this.map.TERRITORIES[combat.to]?.name ?? '')}</div>`;
     this.position(combat.to);
     this.el.hidden = false;
     this.el.className = 'dice-overlay rolling';
@@ -106,7 +107,7 @@ export class DiceOverlay {
 
   /** Place la boîte de dés près du territoire visé (ou au centre s'il est hors écran). */
   position(territoryId) {
-    const pos = TERRITORIES[territoryId]?.pos;
+    const pos = this.map.TERRITORIES[territoryId]?.pos;
     const screen = pos && this.mapView.toScreen(pos.x, pos.y);
     const cw = this.container.clientWidth;
     const ch = this.container.clientHeight;

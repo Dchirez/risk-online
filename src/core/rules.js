@@ -26,7 +26,7 @@
  *   TERRITORY_CONQUERED, PLAYER_ELIMINATED, CARD_DRAWN, PHASE_CHANGED,
  *   FORTIFIED, GAME_OVER, PLAYER_JOINED, PLAYER_LEFT
  */
-import { TERRITORY_IDS, TERRITORIES, areAdjacent } from './map.js';
+import { mapOf } from './map.js';
 import { shuffle, resolveCombat, nextInt } from './dice.js';
 import { createDeck, isValidSet, exchangeBonus } from './cards.js';
 import {
@@ -132,7 +132,7 @@ export function validateAction(state, action) {
       if (!from || !to) return 'Territoire inconnu';
       if (from.owner !== player.id) return 'Le territoire attaquant ne vous appartient pas';
       if (to.owner === player.id) return 'Vous ne pouvez pas attaquer votre propre territoire';
-      if (!areAdjacent(action.from, action.to)) return 'Territoires non adjacents';
+      if (!mapOf(state).areAdjacent(action.from, action.to)) return 'Territoires non adjacents';
       if (from.troops < 2) return 'Il faut au moins 2 troupes pour attaquer';
       const dice = Number(action.dice);
       if (!Number.isInteger(dice) || dice < 1 || dice > 3) return 'Nombre de dés invalide';
@@ -244,20 +244,21 @@ function pushLog(state, e) {
 // ─────────────────────────────── Démarrage ───────────────────────────────
 
 function startGame(state, emit) {
+  const map = mapOf(state);
   // Ordre de jeu aléatoire
   let r = state.rng;
   [state.players, r] = shuffle(r, state.players);
 
   // Distribution aléatoire des territoires (règle rapide, standard en ligne)
   let ids;
-  [ids, r] = shuffle(r, TERRITORY_IDS);
+  [ids, r] = shuffle(r, map.TERRITORY_IDS);
   const n = state.players.length;
   ids.forEach((tid, i) => {
     state.territories[tid] = { owner: state.players[i % n].id, troops: 1 };
   });
 
   // Troupes restantes à placer par joueur
-  const perPlayer = initialTroops(n);
+  const perPlayer = initialTroops(n, map.TERRITORY_IDS.length);
   state.setup = { remaining: {} };
   for (const p of state.players) {
     const owned = ownedTerritories(state, p.id).length;
@@ -265,7 +266,7 @@ function startGame(state, emit) {
   }
 
   // Paquet de cartes
-  [state.cards.deck, r] = createDeck(r);
+  [state.cards.deck, r] = createDeck(r, map);
   state.rng = r;
 
   state.status = 'setup';
@@ -500,6 +501,7 @@ function fortify(state, action, emit) {
 export function possibleMoves(state, playerId) {
   const out = { canPlace: [], attacks: [], fortifies: [], canEndPhase: false };
   if (!state.turn || state.turn.playerId !== playerId) return out;
+  const { TERRITORIES } = mapOf(state);
   const turn = state.turn;
   const owned = ownedTerritories(state, playerId);
 

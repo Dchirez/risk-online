@@ -32,16 +32,24 @@ Trois couches strictement séparées :
 
 ## `src/core` — logique pure
 
-- **`map.js`** : 80 territoires, 6 continents, adjacences (symétrisées et
-  vérifiées au chargement), géométrie. `areAdjacent`, `territoriesOf`, `edges`,
-  `territoryPath` / `continentPath` (chemins SVG) et `territoryAt(x, y)` (test
-  point-dans-polygone, utilisé pour le clic).
-- **`mapData.js`** : données générées (ne pas éditer) par `tools/build-map.mjs`
-  à partir de Natural Earth 1:50m (domaine public) : contours réels fusionnés par
-  territoire, projection de Miller sur 2400 unités de large, point d'étiquette
-  (pôle d'inaccessibilité), adjacences calculées par contact des contours + routes
-  maritimes déclarées à la main. La carte boucle horizontalement (x = 0 ≡ x = 2400),
-  ce qui relie l'Alaska et le Kamtchatka par le bord.
+- **`map.js`** : catalogue des cartes (`MAP_CATALOG`) et construction d'un objet
+  carte (`getMap(id)`, `mapOf(state)`) : territoires, continents, adjacences
+  (symétrisées et vérifiées), `territoriesOf`, `areAdjacent`, chemins SVG,
+  silhouettes pour les cartes à jouer, `territoryAt(x, y)` (clic). Une partie
+  porte `state.mapId` ; le cœur ne connaît aucune carte « globale », donc des
+  parties sur des cartes différentes coexistent sur un même serveur.
+- **`maps/world.js`** : données générées par `tools/build-map.mjs` à partir de
+  Natural Earth 1:50m (domaine public) : contours réels fusionnés par territoire,
+  projection de Miller sur 2400 unités de large, point d'étiquette (pôle
+  d'inaccessibilité), adjacences calculées par contact des contours + routes
+  maritimes déclarées à la main. La carte boucle horizontalement (Alaska ↔ Kamtchatka).
+- **`maps/middle_earth.js`** : données générées par `tools/build-middle-earth.mjs`.
+  Chaque territoire est un point relevé sur la carte de référence ; les cellules
+  de Voronoï sont ondulées de façon déterministe puis rognées par la côte et les
+  mers intérieures ; les chaînes de montagnes coupent l'adjacence (liste `BLOCKED`)
+  et sont exportées comme crêtes à dessiner (`ridges`). Carte non bouclée, avec des
+  zones infranchissables décoratives (`zones`).
+- Bonus de continent, même règle pour toutes les cartes : `max(2, round(n × 0,55))`.
 - **`dice.js`** : RNG déterministe (mulberry32) stocké dans l'état → même graine,
   même partie ; `resolveCombat` compare les dés par paires, égalité au défenseur.
 - **`cards.js`** : paquet (42 + 2 jokers), `isValidSet`, `findValidSets`,

@@ -4,6 +4,7 @@
   "type": "module",
   "description": "Outils de construction de la carte (non embarques dans le site)",
   "dependencies": {
+    "d3-delaunay": "^6.0.4",
     "polygon-clipping": "^0.15.7",
     "polylabel": "^2.1.0",
     "simplify-js": "^1.2.4"

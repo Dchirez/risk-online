@@ -19,7 +19,7 @@
  *
  * Phases : 'setup' (placement initial) → 'reinforce' → 'attack' → 'fortify'
  */
-import { TERRITORY_IDS, TERRITORIES, CONTINENTS, territoriesOf } from './map.js';
+import { mapOf, DEFAULT_MAP_ID } from './map.js';
 import { createRng } from './dice.js';
 
 export const PHASES = ['setup', 'reinforce', 'attack', 'fortify'];
@@ -48,8 +48,8 @@ export const MAX_PLAYERS = 7;
  * décroît avec le nombre de joueurs (calibré sur la règle classique :
  * 42 territoires → 25/20/18 troupes à 5/6/7 joueurs).
  */
-export function initialTroops(playerCount) {
-  return Math.ceil(TERRITORY_IDS.length / playerCount) + Math.round(80 / playerCount);
+export function initialTroops(playerCount, territoryCount) {
+  return Math.ceil(territoryCount / playerCount) + Math.round(80 / playerCount);
 }
 
 /** Nombre de troupes placées par joueur et par tour pendant la phase de placement initial. */
@@ -69,11 +69,13 @@ export function createPlayer({ id, name, type = 'human', colorIndex = 0 }) {
   };
 }
 
-/** État de lobby (avant démarrage). */
-export function createLobbyState({ id, maxPlayers = 6, seed, botDelayMs = 700 }) {
+/** État de lobby (avant démarrage). `mapId` désigne la carte jouée (voir map.js → MAP_CATALOG). */
+export function createLobbyState({ id, maxPlayers = 6, seed, botDelayMs = 700, mapId = DEFAULT_MAP_ID }) {
+  mapOf({ mapId }); // lève une erreur si la carte n'existe pas
   return {
     id,
     version: 0,
+    mapId,
     status: 'lobby',
     settings: { maxPlayers, botDelayMs },
     players: [],
@@ -115,27 +117,29 @@ export function playerHex(player) {
 }
 
 export function ownedTerritories(state, playerId) {
-  return TERRITORY_IDS.filter((t) => state.territories[t]?.owner === playerId);
+  return mapOf(state).TERRITORY_IDS.filter((t) => state.territories[t]?.owner === playerId);
 }
 
 export function continentsOwned(state, playerId) {
-  return Object.keys(CONTINENTS).filter((c) =>
-    territoriesOf(c).every((t) => state.territories[t]?.owner === playerId),
+  const map = mapOf(state);
+  return Object.keys(map.CONTINENTS).filter((c) =>
+    map.territoriesOf(c).every((t) => state.territories[t]?.owner === playerId),
   );
 }
 
 /** Renforts de début de tour : max(3, territoires/3) + bonus continents. */
 export function computeReinforcements(state, playerId) {
+  const map = mapOf(state);
   const n = ownedTerritories(state, playerId).length;
   const base = Math.max(3, Math.floor(n / 3));
-  const bonus = continentsOwned(state, playerId).reduce((s, c) => s + CONTINENTS[c].bonus, 0);
+  const bonus = continentsOwned(state, playerId).reduce((s, c) => s + map.CONTINENTS[c].bonus, 0);
   return { base, bonus, total: base + bonus };
 }
 
 /** Voisins ennemis d'un territoire (pour l'IA et l'UI). */
 export function enemyNeighbors(state, tid) {
   const owner = state.territories[tid].owner;
-  return TERRITORIES[tid].neighbors.filter((n) => state.territories[n].owner !== owner);
+  return mapOf(state).TERRITORIES[tid].neighbors.filter((n) => state.territories[n].owner !== owner);
 }
 
 /**
@@ -143,6 +147,7 @@ export function enemyNeighbors(state, tid) {
  * du même propriétaire (règle de déplacement "en chaîne").
  */
 export function connectedOwned(state, from) {
+  const { TERRITORIES } = mapOf(state);
   const owner = state.territories[from].owner;
   const seen = new Set([from]);
   const stack = [from];

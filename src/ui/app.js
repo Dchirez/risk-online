@@ -11,7 +11,7 @@ import { LocalHostRuntime } from '../net/hostRuntime.js';
 import { LocalAdapter, BroadcastAdapter, WebSocketAdapter } from '../net/adapters.js';
 import { GameClient } from '../net/client.js';
 import { generateGameCode, isValidName } from '../net/protocol.js';
-import { TERRITORIES, areAdjacent } from '../core/map.js';
+import { mapOf, getMap, MAP_CATALOG, DEFAULT_MAP_ID } from '../core/map.js';
 import { playerHex, connectedOwned, getPlayer } from '../core/state.js';
 import { decideBotAction } from '../core/bot.js';
 import { MapView } from './mapView.js';
@@ -76,7 +76,7 @@ function runCommand(text) {
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const tname = (id) => TERRITORIES[id]?.name ?? id;
+const tname = (id) => mapOf(activeUi()?.client.state)?.TERRITORIES[id]?.name ?? id;
 
 const app = {
   runtime: null, // LocalHostRuntime si cet onglet héberge la partie
@@ -186,6 +186,14 @@ function initHome() {
   $('#home-code').value = code;
   $('#home-create').addEventListener('click', onCreate);
   $('#home-join').addEventListener('click', onJoin);
+  // Choix de la carte (dernier choix mémorisé)
+  const mapSelect = $('#home-map');
+  mapSelect.innerHTML = MAP_CATALOG.map((m) => `<option value="${m.id}">${m.name} — ${getMap(m.id).TERRITORY_IDS.length} territoires</option>`).join('');
+  mapSelect.value = localStorage.getItem('risk.map') ?? DEFAULT_MAP_ID;
+  if (!mapSelect.value) mapSelect.value = DEFAULT_MAP_ID;
+  const describeMap = () => ($('#home-map-desc').textContent = MAP_CATALOG.find((m) => m.id === mapSelect.value)?.description ?? '');
+  mapSelect.addEventListener('change', describeMap);
+  describeMap();
   $('#home-code').addEventListener('keydown', (e) => e.key === 'Enter' && onJoin());
   $('#home-name').addEventListener('keydown', (e) => e.key === 'Enter' && (code ? onJoin() : onCreate()));
 
@@ -209,15 +217,21 @@ async function onCreate() {
   const name = readName();
   if (!name) return;
   const maxPlayers = Number($('#home-max').value);
+  const mapId = $('#home-map').value || DEFAULT_MAP_ID;
+  try {
+    localStorage.setItem('risk.map', mapId);
+  } catch {
+    /* stockage indisponible */
+  }
   try {
     if (NET.wsUrl) {
       const client = registerClient(new GameClient(new WebSocketAdapter(NET.wsUrl)));
-      await client.create({ playerName: name, settings: { maxPlayers, botDelayMs: NET.botDelayMs } });
+      await client.create({ playerName: name, settings: { maxPlayers, botDelayMs: NET.botDelayMs, mapId } });
       saveToken(client.gameId, name, client.token);
     } else {
       const gameId = generateGameCode();
       const inviteUrl = `${location.origin}${location.pathname}?game=${gameId}`;
-      app.runtime = new LocalHostRuntime({ gameId, settings: { maxPlayers, botDelayMs: NET.botDelayMs }, inviteUrl });
+      app.runtime = new LocalHostRuntime({ gameId, settings: { maxPlayers, botDelayMs: NET.botDelayMs, mapId }, inviteUrl });
       await createLocalClient(name);
       history.replaceState(null, '', `?game=${gameId}`);
     }
@@ -285,6 +299,7 @@ function renderLobby(state) {
   const client = app.clients[0];
   const isOwner = app.clients.some((c) => c.isOwner);
   $('#lobby-code').textContent = state.id;
+  $('#lobby-map').textContent = getMap(state.mapId ?? DEFAULT_MAP_ID).name;
   $('#lobby-link').value = client.inviteUrl ?? '';
   $('#lobby-max').value = String(state.settings.maxPlayers);
   $('#lobby-speed').value = String(state.settings.botDelayMs);
@@ -330,8 +345,8 @@ function leaveGame() {
 // ═══════════════════════════ Partie ═══════════════════════════
 
 function initGame() {
-  app.mapView = new MapView($('#map'), onTerritoryClick);
-  app.dice = new DiceOverlay($('#map'), app.mapView);
+  app.mapView = null; // créée à l'affichage de la partie, selon sa carte (voir ensureMapView)
+  app.dice = null;
   app.chatView = new ChatView($('#chat'), (text) => (text.startsWith('/') ? runCommand(text) : activeUi()?.client.sendChat(text)));
   app.rules = new RulesPanel($('#rules'), $('#rules-toggle'));
   app.sidebar = new PanelsView($('#game-header'), $('#panels'), {
@@ -458,10 +473,20 @@ function onEvents(client, events) {
   }
 }
 
+/** Construit (ou reconstruit) la vue carte pour la carte de la partie affichée. */
+function ensureMapView(state) {
+  const map = mapOf(state);
+  if (app.mapView?.map.id === map.id) return;
+  app.mapView?.destroy();
+  app.mapView = new MapView($('#map'), onTerritoryClick, map);
+  app.dice = new DiceOverlay($('#map'), app.mapView);
+}
+
 function renderGame() {
   const ui = activeUi();
   if (!ui?.client.state) return;
   const state = ui.client.state;
+  ensureMapView(state);
   sanitizeSelection(ui, state);
   app.sidebar.render(state, ui);
   app.mapView.update(state, computeHighlights(state, ui));
@@ -530,7 +555,7 @@ function onTerritoryClick(tid) {
       if (terr.troops < 2) return toast('Il faut au moins 2 troupes pour attaquer.');
       ui.sel = { from: tid, to: null };
       ui.blitz = false;
-    } else if (ui.sel.from && areAdjacent(ui.sel.from, tid)) {
+    } else if (ui.sel.from && mapOf(state).areAdjacent(ui.sel.from, tid)) {
       ui.sel.to = tid;
     } else {
       return toast(ui.sel.from ? 'Cible non adjacente.' : 'Sélectionnez d’abord un de vos territoires.');

@@ -24,6 +24,10 @@
       <div class="home-columns">
         <div class="home-block">
           <h2>Créer une partie</h2>
+          <label class="field"><span>Carte</span>
+            <select id="home-map"></select>
+          </label>
+          <p id="home-map-desc" class="muted small"></p>
           <label class="field"><span>Nombre de joueurs</span>
             <select id="home-max">
               <option value="5">5 joueurs</option>
@@ -56,7 +60,7 @@
     <div class="home-card wide">
       <h1>Salle d’attente</h1>
       <div class="invite">
-        <span>Code : <strong id="lobby-code"></strong></span>
+        <span>Code : <strong id="lobby-code"></strong> · Carte : <strong id="lobby-map"></strong></span>
         <input id="lobby-link" readonly />
         <button id="lobby-copy" class="btn small">Copier le lien</button>
       </div>

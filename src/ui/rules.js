@@ -3,7 +3,7 @@
  * renfort, attaque, déplacement) ou ce qu'on peut faire quand ce n'est pas son tour.
  * Fermable ; l'état ouvert/fermé est mémorisé dans le navigateur.
  */
-import { CONTINENTS } from '../core/map.js';
+import { mapOf } from '../core/map.js';
 import { PHASE_LABELS, computeReinforcements, getPlayer, playerHex } from '../core/state.js';
 
 const STORAGE_KEY = 'risk.rules.closed';
@@ -71,7 +71,7 @@ export class RulesPanel {
     this.el.innerHTML = `
       <div class="rules-head"><strong>📜 ${title}</strong><button class="rules-close" title="Fermer">✕</button></div>
       <div class="rules-body">${body}</div>
-      <details class="rules-general"><summary>Rappel des règles générales</summary>${generalText()}</details>
+      <details class="rules-general"><summary>Rappel des règles générales</summary>${generalText(mapOf(state))}</details>
       <div class="rules-foot">Tapez <code>/aide</code> dans le chat pour les commandes.</div>`;
   }
 }
@@ -138,8 +138,8 @@ function phaseText(state, me) {
   }
 }
 
-function generalText() {
-  const conts = Object.values(CONTINENTS)
+function generalText(map) {
+  const conts = Object.values(map.CONTINENTS)
     .map((c) => `<li><span class="dot" style="background:${c.color}"></span>${esc(c.name)} : <b>+${c.bonus}</b></li>`)
     .join('');
   return `<ul>
@@ -149,6 +149,6 @@ function generalText() {
     </ul>
     <ul class="rules-continents">${conts}</ul>
     <ul>
-      <li><b>Carte</b> : Alaska et Kamtchatka sont voisins par le bord ; les pointillés sont des liaisons maritimes.</li>
+      <li><b>Carte « ${esc(map.name)} »</b> : ${map.wrap ? 'elle boucle horizontalement (les deux bords se touchent) ; ' : ''}les pointillés sont des liaisons maritimes${map.RIDGES.length ? ', les crêtes ▲▲▲ des montagnes infranchissables' : ''}.</li>
     </ul>`;
 }

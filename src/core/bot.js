@@ -11,7 +11,7 @@
  *                continent, casser celui d'un adversaire ou éliminer un joueur.
  *  - Déplacement : ramène les troupes de l'intérieur vers la frontière la plus menacée.
  */
-import { TERRITORIES, CONTINENTS, territoriesOf } from './map.js';
+import { mapOf } from './map.js';
 import { ownedTerritories, enemyNeighbors, connectedOwned, getPlayer } from './state.js';
 import { findValidSets } from './cards.js';
 import { validateAction, possibleMoves } from './rules.js';
@@ -57,16 +57,17 @@ function threat(state, tid) {
 
 /** Part du continent déjà possédée (0..1) par un joueur. */
 function continentShare(state, continentId, playerId) {
-  const ts = territoriesOf(continentId);
+  const ts = mapOf(state).territoriesOf(continentId);
   const owned = ts.filter((t) => state.territories[t].owner === playerId).length;
   return owned / ts.length;
 }
 
 /** Intérêt stratégique d'un territoire : continent presque acquis → valeur haute. */
 function territoryValue(state, tid, playerId) {
-  const c = TERRITORIES[tid].continent;
+  const map = mapOf(state);
+  const c = map.TERRITORIES[tid].continent;
   const share = continentShare(state, c, playerId);
-  return CONTINENTS[c].bonus * share * share;
+  return map.CONTINENTS[c].bonus * share * share;
 }
 
 // ───────────────────────────── Décisions ─────────────────────────────
@@ -122,6 +123,7 @@ function attackPotential(state, tid, playerId) {
 }
 
 function decideAttack(state, playerId) {
+  const { TERRITORIES, CONTINENTS } = mapOf(state);
   const moves = possibleMoves(state, playerId).attacks;
   let best = null;
   let bestScore = 0;

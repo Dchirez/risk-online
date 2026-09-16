@@ -3,7 +3,7 @@
  * joueurs, cartes, journal — disposés côte à côte.
  * Rendu par template string (simple, sans framework) + délégation d'événements.
  */
-import { TERRITORIES, CONTINENTS, territorySilhouette } from '../core/map.js';
+import { mapOf } from '../core/map.js';
 import { PHASE_LABELS, playerHex, computeReinforcements, continentsOwned, ownedTerritories, getPlayer } from '../core/state.js';
 import { findValidSets, SYMBOL_LABELS } from '../core/cards.js';
 import { possibleMoves } from '../core/rules.js';
@@ -20,7 +20,9 @@ const SYMBOL_ICON = {
   // Joker : étoile
   joker: `<path d="M20 3l5 11 12 1.3-9 8 2.6 12L20 29.4 9.4 35.3 12 23.3l-9-8L15 14z"/>`,
 };
-const tname = (id) => TERRITORIES[id]?.name ?? id;
+/** Carte de la partie en cours de rendu (mise à jour à chaque render). */
+let map = null;
+const tname = (id) => map?.TERRITORIES[id]?.name ?? id;
 
 export class PanelsView {
   /**
@@ -59,6 +61,7 @@ export class PanelsView {
     const me = getPlayer(state, ui.client.playerId);
     const active = state.turn ? getPlayer(state, state.turn.playerId) : null;
     const myTurn = !!(active && me && active.id === me.id);
+    map = mapOf(state);
     this.headerEl.innerHTML = this.header(state, ui);
     this.panelsEl.innerHTML = [
       state.status === 'finished' ? this.gameOver(state) : '',
@@ -162,7 +165,7 @@ export class PanelsView {
       .map((p) => {
         const owned = ownedTerritories(state, p.id);
         const troops = owned.reduce((s, t) => s + state.territories[t].troops, 0);
-        const conts = continentsOwned(state, p.id).map((c) => CONTINENTS[c].short).join(', ');
+        const conts = continentsOwned(state, p.id).map((c) => map.CONTINENTS[c].short).join(', ');
         const tags = [];
         if (p.type === 'bot') tags.push('<span class="tag bot" title="Bot">🤖</span>');
         else if (!p.connected) tags.push(`<span class="tag off" title="Déconnecté${p.controlledByBot ? ' — remplacé par un bot' : ''}">⚠</span>`);
@@ -189,8 +192,8 @@ export class PanelsView {
         // Fond : silhouette du territoire dans la couleur de son continent ; premier plan : icône du rôle
         const bg = c.territory
           ? (() => {
-              const s = territorySilhouette(c.territory);
-              return `<svg class="card-bg" viewBox="${s.viewBox}" preserveAspectRatio="xMidYMid meet"><path d="${s.d}" fill="${CONTINENTS[TERRITORIES[c.territory].continent].color}"/></svg>`;
+              const s = map.territorySilhouette(c.territory);
+              return `<svg class="card-bg" viewBox="${s.viewBox}" preserveAspectRatio="xMidYMid meet"><path d="${s.d}" fill="${map.CONTINENTS[map.TERRITORIES[c.territory].continent].color}"/></svg>`;
             })()
           : '';
         return `<div class="card sym-${c.symbol} ${ui.selectedCards.has(c.id) ? 'sel' : ''}" data-act="card" data-arg="${c.id}"

@@ -32,10 +32,13 @@ serveur WebSocket se branchera plus tard sans modifier l'interface :
 
 ## Règles implémentées
 
-- Carte du monde détaillée : 80 territoires aux contours réels (Natural Earth),
-  6 continents (bonus Amérique du Nord 9, Amérique du Sud 4, Europe 8, Afrique 6,
-  Asie 12, Océanie 3), défilement horizontal bouclé (Alaska ↔ Kamtchatka par le bord),
-  zoom et déplacement.
+- Deux cartes au choix à la création de la partie :
+  - **Monde** : 80 territoires aux contours réels (Natural Earth), 6 continents,
+    défilement horizontal bouclé (Alaska ↔ Kamtchatka par le bord).
+  - **Terre du Milieu** : 80 territoires, 10 régions (Eriador, Arnor, Rohan, Gondor,
+    Mordor, Harad…), chaînes de montagnes infranchissables, Mordor à trois entrées.
+  Bonus de région = 55 % du nombre de territoires (minimum 2), même règle partout.
+  Zoom et déplacement sur les deux.
 - Placement initial (territoires distribués, puis 3 troupes par tour) ; troupes de
   départ proportionnelles au nombre de territoires.
 - Renforts : max(3, territoires ÷ 3) + continents ; cartes échangeables
@@ -56,7 +59,8 @@ src/core/                 règles, carte, dés, cartes, état, IA (pur, testé)
 src/net/                  protocole, hôte de partie, adaptateurs réseau, client
 src/ui/                   écrans, carte SVG, panneaux, chat
 server/                   brouillon du serveur WebSocket (non déployé)
-tools/build-map.mjs       génère src/core/mapData.js depuis Natural Earth (cd tools && node build-map.mjs)
+tools/build-map.mjs       génère src/core/maps/world.js depuis Natural Earth (cd tools && node build-map.mjs)
+tools/build-middle-earth.mjs  génère src/core/maps/middle_earth.js (territoires par points, cellules de Voronoï, montagnes)
 docs/ARCHITECTURE.md      architecture détaillée
 docs/PROTOCOL.md          contrat des messages réseau
 test/                     tests Node (`node --test`)

@@ -2,10 +2,9 @@
  * Cartes territoire : création du paquet, validation des combinaisons,
  * calcul du bonus d'échange. Module pur.
  *
- * Paquet classique : 42 cartes territoire (14 infanterie, 14 cavalerie,
- * 14 artillerie) + 2 jokers.
+ * Paquet : une carte par territoire de la carte jouée (symboles infanterie,
+ * cavalerie, artillerie répartis à parts égales) + 2 jokers.
  */
-import { TERRITORY_IDS } from './map.js';
 import { shuffle } from './dice.js';
 
 export const SYMBOLS = ['infantry', 'cavalry', 'artillery'];
@@ -16,9 +15,9 @@ export const SYMBOL_LABELS = {
   joker: 'Joker',
 };
 
-/** Crée le paquet mélangé. Renvoie [deck, rng]. */
-export function createDeck(rng) {
-  const cards = TERRITORY_IDS.map((territory, i) => ({
+/** Crée le paquet mélangé pour une carte donnée (une carte par territoire + 2 jokers). Renvoie [deck, rng]. */
+export function createDeck(rng, map) {
+  const cards = map.TERRITORY_IDS.map((territory, i) => ({
     id: `c_${territory}`,
     territory,
     symbol: SYMBOLS[i % 3],

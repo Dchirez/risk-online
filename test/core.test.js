@@ -4,7 +4,10 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { TERRITORIES, TERRITORY_IDS, CONTINENTS, territoriesOf, areAdjacent } from '../src/core/map.js';
+import { getMap, MAP_CATALOG } from '../src/core/map.js';
+
+// La plupart des tests portent sur la carte du monde
+const { TERRITORIES, TERRITORY_IDS, CONTINENTS, territoriesOf, areAdjacent } = getMap('world');
 import { createRng, rollDice, resolveCombat, shuffle } from '../src/core/dice.js';
 import { isValidSet, exchangeBonus, createDeck } from '../src/core/cards.js';
 import { createLobbyState, computeReinforcements, connectedOwned, redactStateFor, initialTroops } from '../src/core/state.js';
@@ -79,15 +82,15 @@ test('cartes : combinaisons valides et bonus progressifs', () => {
   assert.equal(exchangeBonus(5), 15);
   assert.equal(exchangeBonus(6), 20);
   assert.equal(exchangeBonus(7), 25);
-  const [deck] = createDeck(createRng(1));
+  const [deck] = createDeck(createRng(1), getMap('world'));
   assert.equal(deck.length, TERRITORY_IDS.length + 2);
   assert.equal(deck.filter((c) => c.symbol === 'joker').length, 2);
 });
 
 // ───────────────────────────── Partie ─────────────────────────────
 
-function lobbyWith(n, seed = 123) {
-  let state = createLobbyState({ id: 'TEST', maxPlayers: n, seed });
+function lobbyWith(n, seed = 123, mapId = 'world') {
+  let state = createLobbyState({ id: 'TEST', maxPlayers: n, seed, mapId });
   for (let i = 0; i < n; i++) {
     state = applyAction(state, { type: 'ADD_PLAYER', player: { id: `p${i}`, name: `Joueur${i}`, type: i === 0 ? 'human' : 'bot' } }).state;
   }
@@ -109,7 +112,7 @@ test('démarrage : territoires tous distribués, troupes initiales cohérentes',
     for (const p of state.players) {
       const owned = TERRITORY_IDS.filter((t) => state.territories[t].owner === p.id).length;
       assert.ok(owned >= Math.floor(TERRITORY_IDS.length / n));
-      assert.equal(owned + state.setup.remaining[p.id], initialTroops(n));
+      assert.equal(owned + state.setup.remaining[p.id], initialTroops(n, TERRITORY_IDS.length));
     }
     assert.equal(state.turn.phase, 'setup');
     assert.ok(state.turn.reinforcements >= 1 && state.turn.reinforcements <= 3);
@@ -280,4 +283,45 @@ test('chat : mentions @ et privés #, insensibles à la casse, pseudos inconnus 
   assert.ok(canSeeChat(priv, 'c'));
   assert.ok(!canSeeChat(priv, 'b'));
   assert.ok(canSeeChat({ kind: 'public', from: 'a', to: [] }, 'b'));
+});
+
+// ───────────────────────────── Autres cartes ─────────────────────────────
+
+test('catalogue : chaque carte est cohérente (adjacences symétriques, graphe connexe, bonus = règle commune)', () => {
+  for (const entry of MAP_CATALOG) {
+    const m = getMap(entry.id);
+    assert.ok(m.TERRITORY_IDS.length >= 40, `${entry.id} : trop peu de territoires`);
+    for (const t of Object.values(m.TERRITORIES)) {
+      assert.ok(t.neighbors.length >= 1, `${entry.id}/${t.id} n’a aucun voisin`);
+      for (const n of t.neighbors) assert.ok(m.areAdjacent(n, t.id), `${entry.id}/${t.id}↔${n} non symétrique`);
+      assert.ok(m.territoryAt(t.pos.x, t.pos.y) === t.id, `${entry.id}/${t.id} : l’étiquette n’est pas dans le territoire`);
+    }
+    for (const c of Object.values(m.CONTINENTS)) {
+      const n = m.territoriesOf(c.id).length;
+      assert.ok(n >= 1, `${entry.id}/${c.id} vide`);
+      assert.equal(c.bonus, Math.max(2, Math.round(n * 0.55)), `${entry.id}/${c.id} : bonus ${c.bonus} pour ${n} territoires`);
+    }
+    const first = m.TERRITORY_IDS[0];
+    const seen = new Set([first]);
+    const stack = [first];
+    while (stack.length) for (const n of m.TERRITORIES[stack.pop()].neighbors) if (!seen.has(n)) { seen.add(n); stack.push(n); }
+    assert.equal(seen.size, m.TERRITORY_IDS.length, `${entry.id} : graphe non connexe`);
+  }
+});
+
+test('Terre du Milieu : montagnes infranchissables, entrées du Mordor, partie complète bots contre bots', () => {
+  const m = getMap('middle_earth');
+  assert.ok(!m.wrap);
+  assert.ok(m.RIDGES.length > 0);
+  assert.ok(!m.areAdjacent('ithilien', 'gorgoroth'));
+  assert.ok(m.areAdjacent('dead_marshes', 'udun'));
+  assert.ok(m.areAdjacent('ithilien', 'minas_morgul'));
+  assert.ok(m.areAdjacent('khand', 'nurn'));
+  assert.ok(m.areAdjacent('umbar', 'dol_amroth'));
+  let { state } = applyAction(lobbyWith(6, 21, 'middle_earth'), { type: 'START_GAME' });
+  assert.equal(state.mapId, 'middle_earth');
+  assert.equal(Object.keys(state.territories).length, m.TERRITORY_IDS.length);
+  const res = playOut(state);
+  assert.equal(res.state.status, 'finished', `partie non terminée après ${res.steps} coups`);
+  assert.ok(m.TERRITORY_IDS.every((t) => res.state.territories[t].owner === res.state.winner));
 });
