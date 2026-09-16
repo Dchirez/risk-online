@@ -16,6 +16,7 @@ L'identité du joueur est déduite de la connexion, jamais du contenu du message
 |-----------|-----------------------------------------------------------|-----------------------------------------|
 | `create`  | `playerName`, `settings: { maxPlayers (5-7), botDelayMs, mapId }` | Créer une partie (le serveur génère le code). `mapId` ∈ catalogue de `src/core/map.js` (`world`, `middle_earth`), défaut `world` |
 | `join`    | `gameId`, `playerName`, `token?`                          | Rejoindre ; avec `token` = reconnexion   |
+| `spectate`| `gameId`, `name`                                          | Regarder sans jouer (partie pleine, commencée, ou curieux) |
 | `lobby`   | `op: 'start' \| 'addBot' \| 'kick' \| 'settings'`, + champs | Réservé au créateur (`isOwner`)        |
 | `action`  | `action: { type, ... }`, `seq`                            | Coup de jeu (voir §3)                    |
 | `chat`    | `text` (≤ 500 caractères)                                 | Message de chat (mentions/privé parsés côté hôte) |
@@ -31,17 +32,17 @@ Détails `lobby` :
 
 | type           | Champs                                                       |
 |----------------|--------------------------------------------------------------|
-| `welcome`      | `playerId`, `token`, `gameId`, `inviteUrl`, `isOwner`        |
+| `welcome`      | `playerId`, `token`, `gameId`, `inviteUrl`, `isOwner`, `spectator?` |
 | `state`        | `state` — vue **redactée** pour ce joueur (voir §4)          |
 | `events`       | `events: [...]`, `version` — événements produits par la dernière action (dés, conquêtes…) |
 | `chat`         | `message` (voir §5)                                          |
 | `chat_history` | `messages: [...]` — à la connexion, filtré pour ce joueur    |
-| `player`       | `op: 'joined' \| 'left' \| 'disconnected' \| 'reconnected' \| 'bot_takeover'`, `playerId` |
+| `player`       | `op: 'joined' \| 'left' \| 'disconnected' \| 'reconnected' \| 'bot_takeover' \| 'spectator_joined' \| 'spectator_left'`, `playerId` |
 | `error`        | `code`, `message`, `seq?` (corrélé à l'`action` refusée)     |
 | `pong`         | —                                                            |
 
 Codes d'erreur : `GAME_NOT_FOUND`, `GAME_FULL`, `NAME_TAKEN`, `INVALID_NAME`,
-`NOT_OWNER`, `ILLEGAL_ACTION`, `BAD_MESSAGE`.
+`NOT_OWNER`, `ILLEGAL_ACTION`, `BAD_MESSAGE`, `SPECTATOR_ONLY`.
 
 ## 3. Actions de jeu (`action.action`)
 
@@ -87,6 +88,8 @@ deux côtés embarquent les mêmes fichiers `src/core/maps/*.js`).
 - `cards` devient `{ deckCount, discardCount, exchanges }` ;
 - `rng` est supprimé (le hasard reste côté hôte).
 
+L'hôte y ajoute `spectators: [{ id, name }]` (liste des personnes qui regardent).
+
 Structure complète : voir l'en-tête de `src/core/state.js`.
 
 ## 5. Chat, mentions, messages privés
@@ -97,6 +100,7 @@ Structure complète : voir l'en-tête de `src/core/state.js`.
   "kind": "public" | "private" | "system",
   "from": "p_1", "fromName": "Alice",
   "text": "#Bob on attaque @Carol ?",
+  "spectator": false,           // true si l'auteur regarde sans jouer
   "mentions": ["p_3"],          // ids des @pseudo reconnus
   "to": ["p_2"]                 // ids des #pseudo (privé) — vide si public
 }
@@ -134,3 +138,25 @@ connexion est perdue (onglet fermé, remplacé par un bot…). S'il existe, la p
 lui est rendue : nouveau jeton, `welcome`, `player{op:'reconnected'}`, et le bot
 rend la main. Sinon : `error{code:'NAME_TAKEN'}` (pseudo déjà connecté) ou
 `error{code:'GAME_FULL'}` (partie commencée, aucun siège de ce nom).
+
+## 7. Mode spectateur
+
+Un `spectate` réussi ouvre une connexion sans siège : pas de `token`, pas de
+`playerId` de joueur (l'identifiant renvoyé commence par `s_`), et `welcome`
+porte `spectator: true`.
+
+Un spectateur :
+- reçoit `state`, `events`, `chat` et `chat_history` comme un joueur, mais sa vue
+  d'état est redactée pour « personne » : **aucune main n'est visible**, seuls les
+  `cardCount` le sont ;
+- apparaît dans `state.spectators`, donc dans le panneau des joueurs, et reste
+  mentionnable (`@pseudo`) et joignable en privé (`#pseudo`) ;
+- peut écrire dans le chat ; ses messages portent `spectator: true` ;
+- ne peut **pas** jouer : toute `action` est refusée avec `SPECTATOR_ONLY` ;
+- ne peut pas utiliser les commandes de jeu (`/bot`, `/passer`, `/delai`, `/kick`) ;
+  seules `/ping` et `/sync` lui répondent ;
+- **ne réveille pas une partie en pause** : seuls les joueurs relancent les bots.
+  En revanche sa présence repousse l'expiration des 96 h.
+
+Un joueur éliminé n'est pas un spectateur au sens du protocole : il garde son
+siège, sa main et son historique, et continue simplement à recevoir la partie.

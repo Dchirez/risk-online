@@ -73,7 +73,8 @@ export class PanelsView {
   }
 
   header(state, ui) {
-    return `<strong>Partie ${esc(state.id)}</strong> <span class="muted small">· tour ${state.turnNumber}</span>
+    const spec = ui.client.isSpectator ? '<span class="tag spectator" title="Vous regardez la partie sans y jouer">👁 Spectateur</span>' : '';
+    return `<strong>Partie ${esc(state.id)}</strong> <span class="muted small">· tour ${state.turnNumber}</span>${spec}
       <button class="btn small" data-act="copy" title="${esc(ui.client.inviteUrl ?? '')}">Lien d’invitation</button>
       <button class="btn small" data-act="leave">Quitter</button>`;
   }
@@ -177,7 +178,14 @@ export class PanelsView {
           <span class="stats">${owned.length} · ${troops} · 🃏${p.cardCount}</span></li>`;
       })
       .join('');
-    return `<div class="panel"><h3>Joueurs <span class="muted" style="text-transform:none;letter-spacing:0">(territoires · troupes · cartes)</span></h3><ul class="players">${items}</ul></div>`;
+    // Spectateurs : joignables dans le chat (@pseudo, #pseudo) mais hors de la partie
+    const specs = (state.spectators ?? [])
+      .map((s) => `<li class="spectator"><span class="dot spectator-dot">👁</span>
+        <span class="pname" data-act="mention" data-arg="${esc(s.name)}">${esc(s.name)}</span>
+        <span class="stats muted">spectateur</span></li>`)
+      .join('');
+    return `<div class="panel"><h3>Joueurs <span class="muted" style="text-transform:none;letter-spacing:0">(territoires · troupes · cartes)</span></h3>
+      <ul class="players">${items}${specs}</ul></div>`;
   }
 
   cardsPanel(state, ui, me, myTurn) {

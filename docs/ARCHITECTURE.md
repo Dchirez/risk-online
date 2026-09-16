@@ -141,6 +141,9 @@ adapter.close()
   `computeHighlights` traduit la sélection en surbrillances.
 - `chat.js` : rendu des messages (mentions colorées, privés, système), boutons
   d'insertion `@pseudo`.
+- Mode spectateur : une connexion sans siège (`GameHost.onSpectate`). Côté cœur,
+  rien ne change : `redactStateFor(state, null)` masque toutes les mains, et
+  `computeHighlights` / `onTerritoryClick` ne réagissent déjà qu'au joueur actif.
 - `rules.js` : panneau d'aide contextuel (règles de la phase en cours, règles
   générales), fermable, état mémorisé dans le navigateur.
 - `diceView.js` : animation des dés sur le plateau à chaque événement `COMBAT`

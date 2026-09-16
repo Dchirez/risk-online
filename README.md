@@ -76,6 +76,11 @@ test/                     tests Node (`node --test`)
   `/humain [pseudo]`, `/passer`, `/delai <ms>`, `/kick <pseudo>` (traitées par l'hôte,
   certaines réservées au créateur). Elles servent à débloquer une partie : joueur
   absent, tour bloqué, joueur remplacé par un bot qui revient…
+- **Mode spectateur** : via le même lien d'invitation, bouton « 👁 Regarder ».
+  Ouvert même quand la partie est pleine ou déjà commencée. Le spectateur voit la
+  carte, les troupes, le journal et le chat, mais aucune main de joueur, et ne peut
+  pas jouer. Il apparaît dans la liste des joueurs et reste joignable par `@pseudo`
+  et `#pseudo`. Un joueur éliminé garde sa place et continue de suivre la partie.
 - Anti-boule de neige : **une seule carte territoire par tour**, quel que soit le
   nombre de conquêtes, et éliminer un joueur ne rapporte qu'**une** de ses cartes
   (tirée au hasard), le reste partant à la défausse.

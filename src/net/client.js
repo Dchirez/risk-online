@@ -22,6 +22,7 @@ export class GameClient {
     this.gameId = null;
     this.inviteUrl = null;
     this.isOwner = false;
+    this.isSpectator = false;
     this.state = null;
     this.chat = [];
     this.listeners = new Map();
@@ -54,6 +55,14 @@ export class GameClient {
    */
   join({ gameId, playerName, token }) {
     return this.handshake({ type: C2S.JOIN, gameId, playerName, token });
+  }
+
+  /**
+   * Entrée en spectateur : voir la partie sans y jouer (partie pleine, déjà
+   * commencée, ou simple curieux). Résout au WELCOME.
+   */
+  spectate({ gameId, name }) {
+    return this.handshake({ type: C2S.SPECTATE, gameId, name });
   }
 
   /**
@@ -126,8 +135,9 @@ export class GameClient {
     this.adapter.close();
   }
 
-  /** Le joueur que ce client contrôle (dans l'état courant). */
+  /** Le joueur que ce client contrôle (null en spectateur). */
   get me() {
+    if (this.isSpectator) return null;
     return this.state?.players.find((p) => p.id === this.playerId) ?? null;
   }
 
@@ -139,6 +149,7 @@ export class GameClient {
         this.gameId = msg.gameId;
         this.inviteUrl = msg.inviteUrl;
         this.isOwner = msg.isOwner;
+        this.isSpectator = !!msg.spectator;
         this.emit('welcome', msg);
         break;
       case S2C.STATE:

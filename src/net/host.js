@@ -59,7 +59,15 @@ export class GameHost {
 
   /** Un client (connexion) arrive. */
   addClient(clientId) {
-    this.clients.set(clientId, { playerId: null, lastSeen: Date.now() });
+    this.clients.set(clientId, { playerId: null, spectator: null, lastSeen: Date.now() });
+  }
+
+  /**
+   * Identifiant du « regardeur » derrière une connexion : joueur ou spectateur.
+   * C'est lui qui sert à filtrer le chat et à redacter l'état.
+   */
+  viewerId(c) {
+    return c.playerId ?? c.spectator?.id ?? null;
   }
 
   /** Message reçu d'un client. */
@@ -69,13 +77,16 @@ export class GameHost {
     if (!client) this.addClient(clientId);
     const c = this.clients.get(clientId);
     c.lastSeen = Date.now();
-    if (c.playerId) this.lastActivity = c.lastSeen; // un humain est présent (même un simple ping)
+    // Un humain est présent (joueur ou spectateur) : la partie n'est pas à l'abandon
+    if (this.viewerId(c)) this.lastActivity = c.lastSeen;
     if (!msg || typeof msg.type !== 'string') return this.error(clientId, ERROR_CODES.BAD_MESSAGE, 'Message invalide');
 
     try {
       switch (msg.type) {
         case C2S.JOIN:
           return this.onJoin(clientId, msg);
+        case C2S.SPECTATE:
+          return this.onSpectate(clientId, msg);
         case C2S.LOBBY:
           return this.onLobby(clientId, msg);
         case C2S.ACTION:
@@ -101,6 +112,12 @@ export class GameHost {
     const client = this.clients.get(clientId);
     if (!client) return;
     this.clients.delete(clientId);
+    if (client.spectator) {
+      this.systemChat(`${client.spectator.name} ne regarde plus la partie.`);
+      this.broadcast({ type: S2C.PLAYER, op: 'spectator_left', playerId: client.spectator.id });
+      this.broadcastState();
+      return;
+    }
     const playerId = client.playerId;
     if (!playerId) return;
     const seat = this.seats.get(playerId);
@@ -184,7 +201,7 @@ export class GameHost {
         return this.reconnect(clientId, seatPlayer.id, seat);
       }
       if (seatPlayer) return this.error(clientId, ERROR_CODES.NAME_TAKEN, `${seatPlayer.name} est déjà connecté·e à cette partie`);
-      return this.error(clientId, ERROR_CODES.GAME_FULL, 'La partie a déjà commencé. Pour reprendre votre place, entrez le pseudo que vous aviez.');
+      return this.error(clientId, ERROR_CODES.GAME_FULL, 'La partie a déjà commencé. Entrez le pseudo que vous aviez pour reprendre votre place, ou regardez en spectateur.');
     }
     const playerId = randomId('p');
     const err = validateAction(this.state, { type: 'ADD_PLAYER', player: { id: playerId, name: msg.playerName, type: 'human' } });
@@ -226,6 +243,32 @@ export class GameHost {
     this.systemChat(`${getPlayer(this.state, playerId).name} est de retour.`);
     this.broadcastState();
     this.scheduleBot();
+  }
+
+  // ═════════════════════════ Spectateurs ═════════════════════════
+
+  /**
+   * Entrée en spectateur : accessible à tout moment via le lien d'invitation,
+   * y compris quand la partie est pleine ou déjà commencée. Un spectateur voit
+   * la carte, le journal et le chat public, mais aucune main de joueur et ne
+   * peut agir sur la partie.
+   */
+  onSpectate(clientId, msg) {
+    const c = this.clients.get(clientId);
+    if (this.viewerId(c)) return this.error(clientId, ERROR_CODES.BAD_MESSAGE, 'Vous êtes déjà dans la partie');
+    const name = String(msg.name ?? '').trim();
+    if (!isValidName(name)) return this.error(clientId, ERROR_CODES.INVALID_NAME, 'Pseudo invalide (2-16 caractères, lettres/chiffres/_/-)');
+    const taken = [...this.chatParticipants()].some((p) => p.name.toLowerCase() === name.toLowerCase());
+    if (taken) return this.error(clientId, ERROR_CODES.NAME_TAKEN, 'Ce pseudo est déjà utilisé dans cette partie');
+
+    const id = randomId('s');
+    c.spectator = { id, name };
+    this.lastActivity = Date.now();
+    this.sendTo(clientId, { type: S2C.WELCOME, playerId: id, spectator: true, gameId: this.gameId, inviteUrl: this.inviteUrl, isOwner: false });
+    this.sendChatHistory(clientId, id);
+    this.broadcast({ type: S2C.PLAYER, op: 'spectator_joined', playerId: id });
+    this.systemChat(`${name} regarde la partie (spectateur).`);
+    this.broadcastState();
   }
 
   onLobby(clientId, msg) {
@@ -279,7 +322,9 @@ export class GameHost {
   // ═════════════════════════ Jeu ═════════════════════════
 
   onAction(clientId, msg) {
-    const playerId = this.clients.get(clientId).playerId;
+    const c = this.clients.get(clientId);
+    if (c.spectator) return this.error(clientId, ERROR_CODES.SPECTATOR_ONLY, 'Vous regardez la partie en spectateur : vous ne pouvez pas jouer.', msg.seq);
+    const playerId = c.playerId;
     if (!playerId) return this.error(clientId, ERROR_CODES.BAD_MESSAGE, 'Rejoignez la partie d’abord', msg.seq);
     const action = { ...msg.action, playerId }; // l'identité vient de la connexion, jamais du message
     const err = validateAction(this.state, action);
@@ -360,19 +405,26 @@ export class GameHost {
 
   // ═════════════════════════ Chat ═════════════════════════
 
+  /** Joueurs et spectateurs réunis : tout le monde est mentionnable (@) et joignable en privé (#). */
+  chatParticipants() {
+    return [...this.state.players.map((p) => ({ id: p.id, name: p.name })), ...this.spectatorList()];
+  }
+
   onChat(clientId, msg) {
-    const playerId = this.clients.get(clientId).playerId;
-    if (!playerId) return this.error(clientId, ERROR_CODES.BAD_MESSAGE, 'Rejoignez la partie d’abord');
+    const c = this.clients.get(clientId);
+    const from = this.viewerId(c);
+    if (!from) return this.error(clientId, ERROR_CODES.BAD_MESSAGE, 'Rejoignez la partie d’abord');
     const text = String(msg.text ?? '').trim().slice(0, 500);
     if (!text) return;
-    const { mentions, privateTo } = parseChat(text, this.state.players);
-    const recipients = privateTo.filter((id) => id !== playerId);
+    const { mentions, privateTo } = parseChat(text, this.chatParticipants());
+    const recipients = privateTo.filter((id) => id !== from);
     const message = {
       id: randomId('m'),
       ts: Date.now(),
       kind: recipients.length ? 'private' : 'public',
-      from: playerId,
-      fromName: getPlayer(this.state, playerId).name,
+      from,
+      fromName: c.spectator ? c.spectator.name : getPlayer(this.state, from).name,
+      spectator: !!c.spectator, // affiché avec une pastille « spectateur »
       text,
       mentions,
       to: recipients,
@@ -397,8 +449,22 @@ export class GameHost {
    * sont traitées côté client et n'arrivent jamais ici.
    */
   onCommand(clientId, msg) {
-    const playerId = this.clients.get(clientId).playerId;
-    if (!playerId) return this.error(clientId, ERROR_CODES.BAD_MESSAGE, 'Rejoignez la partie d’abord');
+    const c = this.clients.get(clientId);
+    const playerId = c.playerId;
+    if (!playerId && !c.spectator) return this.error(clientId, ERROR_CODES.BAD_MESSAGE, 'Rejoignez la partie d’abord');
+    // Un spectateur ne peut pas agir sur la partie : seules /sync et /ping lui répondent.
+    if (c.spectator) {
+      const cmd = String(msg.name ?? '').toLowerCase();
+      if (cmd === 'ping') return this.systemChatTo(c.spectator.id, 'pong');
+      if (cmd === 'sync') {
+        const view = redactStateFor(this.state, null);
+        view.spectators = this.spectatorList();
+        this.sendTo(clientId, { type: S2C.STATE, state: view });
+        this.sendChatHistory(clientId, c.spectator.id);
+        return this.systemChatTo(c.spectator.id, 'État et chat resynchronisés.');
+      }
+      return this.systemChatTo(c.spectator.id, `/${cmd} est réservée aux joueurs : vous regardez la partie en spectateur.`);
+    }
     const me = getPlayer(this.state, playerId);
     const isOwner = playerId === this.ownerId;
     const name = String(msg.name ?? '').toLowerCase();
@@ -496,26 +562,37 @@ export class GameHost {
     if (this.chat.length > MAX_CHAT) this.chat.splice(0, this.chat.length - MAX_CHAT); // borne la mémoire et la sauvegarde
     this.onDirty?.();
     for (const [clientId, c] of this.clients) {
-      if (c.playerId && canSeeChat(message, c.playerId)) this.sendTo(clientId, { type: S2C.CHAT, message });
+      const viewer = this.viewerId(c);
+      if (viewer && canSeeChat(message, viewer)) this.sendTo(clientId, { type: S2C.CHAT, message });
     }
   }
 
-  sendChatHistory(clientId, playerId) {
-    const messages = this.chat.filter((m) => canSeeChat(m, playerId));
+  sendChatHistory(clientId, viewerId) {
+    const messages = this.chat.filter((m) => canSeeChat(m, viewerId));
     this.sendTo(clientId, { type: S2C.CHAT_HISTORY, messages });
   }
 
   // ═════════════════════════ Sorties ═════════════════════════
 
   broadcast(message) {
-    for (const [clientId, c] of this.clients) if (c.playerId) this.sendTo(clientId, message);
+    for (const [clientId, c] of this.clients) if (this.viewerId(c)) this.sendTo(clientId, message);
   }
 
   broadcastState() {
     for (const [clientId, c] of this.clients) {
-      if (!c.playerId) continue;
-      this.sendTo(clientId, { type: S2C.STATE, state: redactStateFor(this.state, c.playerId) });
+      if (!this.viewerId(c)) continue;
+      // Un spectateur reçoit la vue « personne » : aucune main de joueur n'est visible.
+      const view = redactStateFor(this.state, c.playerId);
+      view.spectators = this.spectatorList();
+      this.sendTo(clientId, { type: S2C.STATE, state: view });
     }
+  }
+
+  /** Liste publique des spectateurs, jointe à chaque état diffusé. */
+  spectatorList() {
+    const out = [];
+    for (const c of this.clients.values()) if (c.spectator) out.push({ id: c.spectator.id, name: c.spectator.name });
+    return out;
   }
 
   broadcastEvents(events) {
