@@ -11,6 +11,7 @@
 export const C2S = Object.freeze({
   CREATE: 'create', // { playerName, settings:{maxPlayers,botDelayMs} }
   JOIN: 'join', // { gameId, playerName, token? }  (token = reconnexion)
+  SPECTATE: 'spectate', // { gameId, name }  entrer en spectateur (partie pleine, commencée, ou simple curieux)
   LOBBY: 'lobby', // { op:'start'|'addBot'|'addLocal'|'kick'|'settings', ... } (hôte de partie uniquement)
   ACTION: 'action', // { action:{type,...}, seq }  seq = numéro client pour corréler les erreurs
   CHAT: 'chat', // { text }
@@ -21,12 +22,12 @@ export const C2S = Object.freeze({
 
 /** Messages envoyés par l'hôte / le serveur. */
 export const S2C = Object.freeze({
-  WELCOME: 'welcome', // { playerId, token, gameId, inviteUrl, isOwner }
+  WELCOME: 'welcome', // { playerId, token, gameId, inviteUrl, isOwner, spectator? }
   STATE: 'state', // { state } vue redactée pour ce joueur (voir redactStateFor)
   EVENTS: 'events', // { events:[...], version }
   CHAT: 'chat', // { message:{ id, ts, kind, from, fromName, text, mentions:[], to:[] } }
   CHAT_HISTORY: 'chat_history', // { messages:[...] } à la connexion
-  PLAYER: 'player', // { op:'joined'|'left'|'disconnected'|'reconnected'|'bot_takeover', playerId }
+  PLAYER: 'player', // { op:'joined'|'left'|'disconnected'|'reconnected'|'bot_takeover'|'spectator_joined'|'spectator_left', playerId }
   ERROR: 'error', // { code, message, seq? }
   PONG: 'pong',
 });
@@ -39,6 +40,7 @@ export const ERROR_CODES = Object.freeze({
   NOT_OWNER: 'NOT_OWNER',
   ILLEGAL_ACTION: 'ILLEGAL_ACTION',
   BAD_MESSAGE: 'BAD_MESSAGE',
+  SPECTATOR_ONLY: 'SPECTATOR_ONLY', // action de joueur tentée depuis le mode spectateur
 });
 
 /** Pseudo : 2 à 16 caractères alphanumériques / tiret bas (pas d'espace → mentions non ambiguës). */
@@ -54,8 +56,8 @@ export function isValidName(name) {
  * Le pseudo est insensible à la casse. Les pseudos inconnus sont ignorés.
  *
  * @param {string} text
- * @param {{id:string,name:string}[]} players
- * @returns {{ mentions:string[], privateTo:string[] }}  identifiants de joueurs
+ * @param {{id:string,name:string}[]} players  joueurs ET spectateurs (tous mentionnables)
+ * @returns {{ mentions:string[], privateTo:string[] }}  identifiants
  */
 export function parseChat(text, players) {
   const byName = new Map(players.map((p) => [p.name.toLowerCase(), p.id]));

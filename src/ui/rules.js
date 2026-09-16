@@ -41,13 +41,13 @@ export class RulesPanel {
     this.toggle.classList.toggle('active', this.open);
   }
 
-  /** Met à jour le contenu selon l'état et le joueur courant. */
-  update(state, me) {
+  /** Met à jour le contenu selon l'état, le joueur courant et le mode spectateur. */
+  update(state, me, isSpectator = false) {
     if (!state) return;
     const active = state.turn ? getPlayer(state, state.turn.playerId) : null;
     const myTurn = !!(active && me && active.id === me.id);
     const phase = state.turn?.phase ?? state.status;
-    const key = `${state.status}|${phase}|${myTurn}|${me?.alive}|${state.turn?.mustExchange}|${!!state.turn?.pendingOccupy}`;
+    const key = `${state.status}|${phase}|${myTurn}|${me?.alive}|${state.turn?.mustExchange}|${!!state.turn?.pendingOccupy}|${isSpectator}`;
     if (key === this.lastKey) return; // évite de re-rendre à chaque coup
     this.lastKey = key;
 
@@ -57,9 +57,19 @@ export class RulesPanel {
       const w = getPlayer(state, state.winner);
       title = 'Partie terminée';
       body = `<p><b style="color:${playerHex(w)}">${esc(w?.name ?? '?')}</b> a conquis le monde. Pour rejouer, créez une nouvelle partie depuis l’accueil.</p>`;
+    } else if (isSpectator) {
+      title = `Mode spectateur — ${PHASE_LABELS[phase] ?? ''}`;
+      body = `<p>Vous suivez la partie en direct sans y participer. Vous voyez la carte, les troupes et le journal, mais aucune main de joueur.</p>
+        <ul>
+          <li>Tour en cours : <b>${esc(active?.name ?? '—')}</b>.</li>
+          <li>Vous pouvez discuter dans le chat : <code>@pseudo</code> pour interpeller, <code>#pseudo</code> pour un message privé.</li>
+          <li>Molette pour zoomer, glisser pour déplacer la carte. Un clic sur un territoire affiche son propriétaire et ses troupes.</li>
+          <li>Pour jouer, il faut une place libre dans une partie non commencée.</li>
+        </ul>`;
     } else if (me && !me.alive) {
       title = 'Vous êtes éliminé·e';
-      body = `<p>Vous n’avez plus de territoire. Vous pouvez rester pour regarder la fin de la partie et discuter dans le chat.</p>`;
+      body = `<p>Vous n’avez plus de territoire, mais vous restez dans la partie <b>en spectateur</b> : vous voyez la carte et le journal jusqu’à la fin, et vous pouvez continuer à discuter dans le chat.</p>
+        <ul><li>Tour en cours : <b>${esc(active?.name ?? '—')}</b>.</li></ul>`;
     } else if (!myTurn) {
       title = `Tour de ${esc(active?.name ?? '?')} — ${PHASE_LABELS[phase] ?? ''}`;
       body = waitingText(state, active);

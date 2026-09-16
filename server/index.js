@@ -159,7 +159,7 @@ wss.on('connection', (ws) => {
         host.addClient(clientId);
         return host.handleMessage(clientId, { type: C2S.JOIN, playerName: msg.playerName });
       }
-      if (msg.type === C2S.JOIN) {
+      if (msg.type === C2S.JOIN || msg.type === C2S.SPECTATE) {
         host = games.get(String(msg.gameId ?? '').toUpperCase()) ?? null;
         if (!host) return sendTo(clientId, { type: S2C.ERROR, code: ERROR_CODES.GAME_NOT_FOUND, message: 'Partie introuvable (code erroné, partie terminée ou expirée)' });
         host.addClient(clientId);

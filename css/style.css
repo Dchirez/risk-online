@@ -154,6 +154,13 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 0;
 .toast.info { background: #14232b; color: #d0ecff; border-color: #2a4f6b; }
 .toast[hidden] { display: none; }
 
+/* ═══════════════════════════ Mode spectateur ═══════════════════════════ */
+.tag.spectator { background: rgba(138,138,138,.25); border: 1px solid #8a8a8a; color: #d7d7d7; padding: 1px 7px; border-radius: 999px; font-size: 11px; margin-left: 6px; }
+.players li.spectator { opacity: .8; }
+.players li.spectator .pname { font-style: italic; }
+.spectator-dot { display: inline-block; width: 12px; text-align: center; font-size: 10px; background: none !important; }
+#home-spectate { white-space: nowrap; }
+
 /* ═══════════════════════════ Panneau des règles du tour ═══════════════════════════ */
 .rules {
   position: absolute; top: 10px; right: 10px; width: 320px; max-width: calc(100% - 20px); max-height: calc(100% - 20px);

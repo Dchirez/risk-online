@@ -186,6 +186,7 @@ function initHome() {
   $('#home-code').value = code;
   $('#home-create').addEventListener('click', onCreate);
   $('#home-join').addEventListener('click', onJoin);
+  $('#home-spectate').addEventListener('click', onSpectate);
   // Choix de la carte (dernier choix mémorisé)
   const mapSelect = $('#home-map');
   mapSelect.innerHTML = MAP_CATALOG.map((m) => `<option value="${m.id}">${m.name} — ${getMap(m.id).TERRITORY_IDS.length} territoires</option>`).join('');
@@ -257,8 +258,32 @@ async function onJoin() {
     app.clients = app.clients.filter((c) => c !== client);
     client.leave();
     homeError(e.message);
+    // Plus de place ou partie commencée : le mode spectateur reste ouvert
+    $('#home-spectate').classList.add('primary');
   } finally {
     $('#home-join').disabled = false;
+  }
+}
+
+/** Entrer en spectateur : voir la partie en direct sans y jouer. */
+async function onSpectate() {
+  const name = readName();
+  if (!name) return;
+  const code = $('#home-code').value.trim().toUpperCase();
+  if (!/^[A-Z0-9]{6}$/.test(code)) return homeError('Code de partie invalide (6 caractères).');
+  const adapter = NET.wsUrl ? new WebSocketAdapter(NET.wsUrl) : new BroadcastAdapter(code);
+  const client = registerClient(new GameClient(adapter));
+  $('#home-spectate').disabled = true;
+  try {
+    await client.spectate({ gameId: code, name });
+    history.replaceState(null, '', `?game=${code}`);
+    toast('Mode spectateur : vous suivez la partie sans y jouer.', 'info');
+  } catch (e) {
+    app.clients = app.clients.filter((c) => c !== client);
+    client.leave();
+    homeError(e.message);
+  } finally {
+    $('#home-spectate').disabled = false;
   }
 }
 
@@ -490,14 +515,17 @@ function renderGame() {
   sanitizeSelection(ui, state);
   app.sidebar.render(state, ui);
   app.mapView.update(state, computeHighlights(state, ui));
-  app.rules.update(state, ui.client.me);
+  app.rules.update(state, ui.client.me, ui.client.isSpectator);
   renderChat();
   renderSwitcher();
 }
 
 function renderChat() {
   const ui = activeUi();
-  app.chatView.render(ui.client.chat, ui.client.state.players, ui.client.playerId);
+  const state = ui.client.state;
+  // Les spectateurs sont mentionnables (@) et joignables en privé (#) comme les joueurs
+  const participants = [...state.players, ...(state.spectators ?? []).map((s) => ({ ...s, spectator: true }))];
+  app.chatView.render(ui.client.chat, participants, ui.client.playerId);
 }
 
 function renderSwitcher() {

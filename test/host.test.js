@@ -120,3 +120,85 @@ test('sauvegarde / rechargement : état, chat et jetons conservés, humains déc
   assert.ok(history.messages.some((m) => m.kind === 'private' && m.text.includes('allie')));
   assert.ok(!restored.paused);
 });
+
+// ───────────────────────────── Mode spectateur ─────────────────────────────
+
+test('spectateur : accès à une partie pleine ou commencée, sans voir les mains ni pouvoir jouer', () => {
+  const h = makeHost();
+  joinAndStart(h);
+  const alice = h.host.state.players.find((p) => p.name === 'Alice');
+  alice.cards = [{ id: 'c_x', symbol: 'joker', territory: null }];
+  alice.cardCount = 1; // normalement recalculé par le moteur de règles
+
+  // Rejoindre en joueur est refusé, regarder est accepté
+  h.host.addClient('sp');
+  h.host.handleMessage('sp', { type: 'join', playerName: 'Zoe' });
+  assert.equal(h.last('sp', 'error').code, 'GAME_FULL');
+  h.host.handleMessage('sp', { type: 'spectate', name: 'Zoe' });
+  const welcome = h.last('sp', 'welcome');
+  assert.equal(welcome.spectator, true);
+  assert.ok(welcome.playerId.startsWith('s_'));
+
+  // L'état reçu masque toutes les mains et liste le spectateur
+  const view = h.last('sp', 'state').state;
+  assert.ok(view.players.every((p) => p.cards.length === 0), 'aucune main visible');
+  assert.equal(view.players.find((p) => p.name === 'Alice').cardCount, 1);
+  assert.equal(view.rng, undefined);
+  assert.deepEqual(view.spectators.map((s) => s.name), ['Zoe']);
+
+  // Aucune action de jeu possible
+  h.host.handleMessage('sp', { type: 'action', seq: 1, action: { type: 'END_PHASE' } });
+  assert.equal(h.last('sp', 'error').code, 'SPECTATOR_ONLY');
+
+  // Les joueurs voient le spectateur dans leur propre vue
+  assert.deepEqual(h.last('c1', 'state').state.spectators.map((s) => s.name), ['Zoe']);
+
+  // Pseudo déjà pris
+  h.host.addClient('sp2');
+  h.host.handleMessage('sp2', { type: 'spectate', name: 'zoe' });
+  assert.equal(h.last('sp2', 'error').code, 'NAME_TAKEN');
+  h.host.addClient('sp3');
+  h.host.handleMessage('sp3', { type: 'spectate', name: 'Alice' });
+  assert.equal(h.last('sp3', 'error').code, 'NAME_TAKEN');
+});
+
+test('spectateur : chat public et privé dans les deux sens, départ propre', () => {
+  const h = makeHost();
+  joinAndStart(h);
+  h.host.addClient('sp');
+  h.host.handleMessage('sp', { type: 'spectate', name: 'Zoe' });
+  const specId = h.last('sp', 'welcome').playerId;
+
+  // Message public du spectateur : marqué, visible par les joueurs
+  h.host.handleMessage('sp', { type: 'chat', text: 'belle partie !' });
+  const pub = h.host.chat.at(-1);
+  assert.equal(pub.kind, 'public');
+  assert.equal(pub.spectator, true);
+  assert.equal(pub.fromName, 'Zoe');
+  assert.equal(h.last('c1', 'chat').message.text, 'belle partie !');
+
+  // Privé du spectateur vers un joueur : invisible pour les autres
+  h.host.handleMessage('sp', { type: 'chat', text: '#Alice bien joué' });
+  const priv = h.host.chat.at(-1);
+  assert.equal(priv.kind, 'private');
+  assert.notEqual(h.last('c2', 'chat').message.id, priv.id, 'Bob ne voit pas le privé');
+  assert.equal(h.last('c1', 'chat').message.id, priv.id, 'Alice le voit');
+
+  // Privé d'un joueur vers le spectateur
+  h.host.handleMessage('c1', { type: 'chat', text: '#Zoe merci' });
+  assert.equal(h.last('sp', 'chat').message.text, '#Zoe merci');
+
+  // Les commandes de jeu sont refusées au spectateur
+  h.host.handleMessage('sp', { type: 'command', name: 'passer', args: [] });
+  assert.match(h.last('sp', 'chat').message.text, /réservée aux joueurs/);
+
+  // Un spectateur ne relance pas la partie en pause
+  h.host.handleDisconnect('c1');
+  h.host.handleDisconnect('c2');
+  assert.ok(h.host.paused, 'seuls les joueurs réveillent la partie');
+
+  // Départ : retiré de la liste
+  h.host.handleDisconnect('sp');
+  assert.equal(h.host.spectatorList().length, 0);
+  assert.equal(h.host.spectatorList().find((s) => s.id === specId), undefined);
+});

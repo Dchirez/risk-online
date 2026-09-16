@@ -77,8 +77,9 @@ export class ChatView {
           return `${pre}<span class="mention" style="color:${playerHex(p)}">${sym}${escapeHtml(p.name)}</span>`;
         });
         const lock = m.kind === 'private' ? `<span class="lock" title="Message privé">🔒 privé</span>` : '';
+        const eye = m.spectator ? `<span class="lock" title="Spectateur">👁</span>` : '';
         const toNames = m.kind === 'private' ? ` <span class="muted small">→ ${m.to.map((id) => escapeHtml(byId[id]?.name ?? '?')).join(', ')}</span>` : '';
-        return `<div class="${cls.join(' ')}"><span class="time">${time}</span>${lock}<span class="who" style="color:${color}">${escapeHtml(m.fromName)}</span>${toNames} : ${html}</div>`;
+        return `<div class="${cls.join(' ')}"><span class="time">${time}</span>${lock}${eye}<span class="who" style="color:${color}">${escapeHtml(m.fromName)}</span>${toNames} : ${html}</div>`;
       })
       .join('');
     if (atBottom) this.list.scrollTop = this.list.scrollHeight;
@@ -86,7 +87,7 @@ export class ChatView {
     // Boutons d'insertion rapide (autres joueurs humains ou bots)
     this.suggest.innerHTML = players
       .filter((p) => p.id !== meId)
-      .map((p) => `<button class="btn small" type="button" data-insert="@${escapeHtml(p.name)}" style="border-color:${playerHex(p)}">@${escapeHtml(p.name)}</button>`)
+      .map((p) => `<button class="btn small" type="button" data-insert="@${escapeHtml(p.name)}" style="border-color:${p.spectator ? '#8a8a8a' : playerHex(p)}">${p.spectator ? '👁' : ''}@${escapeHtml(p.name)}</button>`)
       .join('');
   }
 }
