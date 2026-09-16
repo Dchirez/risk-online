@@ -74,6 +74,8 @@ setup (placement initial, 3 troupes / joueur / tour, territoires distribués au 
         └─► attack : ATTACK (1-3 dés) → conquête → OCCUPY ; élimination = récupération des cartes
               └─► fortify : FORTIFY (1 déplacement en chaîne) ou END_PHASE
                     └─► pioche 1 carte si conquête → joueur vivant suivant
+                        (au plus UNE carte par tour : verrou `turn.cardDrawn`,
+                         et l'élimination d'un joueur n'en rapporte qu'une seule)
 ```
 
 ## `src/net` — hôte et transport

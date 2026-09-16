@@ -283,7 +283,8 @@ function newTurn(playerId, phase, reinforcements) {
     phase,
     reinforcements,
     reinforcementDetail: null,
-    conquered: false, // a conquis ≥1 territoire ce tour → pioche une carte
+    conquered: false, // a conquis ≥1 territoire ce tour → pioche une carte en fin de tour
+    cardDrawn: false, // verrou : une seule carte piochée par tour, quoi qu'il arrive
     pendingOccupy: null, // { from, to, min, moved, max } : troupes à déplacer sur le territoire conquis
     mustExchange: false,
     lastAttack: null, // { from, to } pour présélection UI/IA
@@ -359,7 +360,12 @@ function exchangeCards(state, action, emit) {
   });
 }
 
+/**
+ * Pioche UNE carte, au plus une fois par tour (anti-boule de neige) : peu importe
+ * le nombre de territoires conquis, un tour ne rapporte jamais plus d'une carte.
+ */
 function drawCard(state, player, emit) {
+  if (state.turn?.cardDrawn) return;
   if (state.cards.deck.length === 0) {
     if (state.cards.discard.length === 0) return;
     let r = state.rng;
@@ -369,6 +375,7 @@ function drawCard(state, player, emit) {
   }
   const card = state.cards.deck.pop();
   player.cards.push(card);
+  if (state.turn) state.turn.cardDrawn = true;
   emit({ type: 'CARD_DRAWN', playerId: player.id });
 }
 
@@ -458,9 +465,18 @@ function attack(state, action, emit) {
     if (ownedTerritories(state, defenderId).length === 0) {
       defender.alive = false;
       const attacker = getPlayer(state, action.playerId);
-      attacker.cards.push(...defender.cards);
+      // Anti-boule de neige : l'attaquant ne récupère qu'UNE carte du joueur
+      // éliminé (tirée au hasard), le reste retourne à la défausse.
+      let taken = null;
+      if (defender.cards.length) {
+        let idx;
+        [idx, state.rng] = nextInt(state.rng, 0, defender.cards.length - 1);
+        taken = defender.cards.splice(idx, 1)[0];
+        attacker.cards.push(taken);
+      }
+      state.cards.discard.push(...defender.cards);
       defender.cards = [];
-      emit({ type: 'PLAYER_ELIMINATED', playerId: defenderId, by: action.playerId });
+      emit({ type: 'PLAYER_ELIMINATED', playerId: defenderId, by: action.playerId, cardTaken: !!taken });
       if (attacker.cards.length >= 6) turn.mustExchange = true;
     }
 
