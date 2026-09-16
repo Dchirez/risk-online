@@ -62,6 +62,21 @@ docs/PROTOCOL.md          contrat des messages réseau
 test/                     tests Node (`node --test`)
 ```
 
+## Aide et commandes en partie
+
+- Le bouton **📜 Règles** (barre du haut) ouvre un panneau fermable qui explique la
+  phase en cours (placement, renfort, attaque, déplacement) et rappelle les règles
+  générales et les bonus de continent.
+- Dans le chat, un message commençant par `/` est une commande. `/aide` liste tout :
+  `/joueurs`, `/etat`, `/lien`, `/regles`, `/sync`, `/ping` (locales), `/bot [pseudo]`,
+  `/humain [pseudo]`, `/passer`, `/delai <ms>`, `/kick <pseudo>` (traitées par l'hôte,
+  certaines réservées au créateur). Elles servent à débloquer une partie : joueur
+  absent, tour bloqué, joueur remplacé par un bot qui revient…
+- Reconnexion : le jeton est mémorisé dans le navigateur (nouvel onglet sur le même
+  lien = reprise automatique). Sans jeton (autre appareil, navigateur vidé), il
+  suffit de rejoindre avec **le même pseudo** : la place d'un humain déconnecté,
+  même déjà jouée par un bot, est rendue.
+
 ## Déploiement
 
 Le site est statique : publier la racine du dépôt sur GitHub Pages (Settings →

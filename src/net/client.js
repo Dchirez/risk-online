@@ -106,6 +106,17 @@ export class GameClient {
     this.adapter.send({ type: C2S.CHAT, text });
   }
 
+  /** Commande de chat traitée par l'hôte (/bot, /passer, /delai…). */
+  sendCommand(name, args = []) {
+    this.adapter.send({ type: C2S.COMMAND, name, args });
+  }
+
+  /** Message système visible uniquement dans cet onglet (réponses des commandes locales). */
+  localSystem(text) {
+    this.chat.push({ id: `local_${Date.now()}`, ts: Date.now(), kind: 'system', from: null, fromName: 'Système', text, mentions: [], to: [] });
+    this.emit('chat', null);
+  }
+
   lobby(op, extra = {}) {
     this.adapter.send({ type: C2S.LOBBY, op, ...extra });
   }

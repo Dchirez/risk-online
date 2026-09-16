@@ -18,6 +18,61 @@ import { MapView } from './mapView.js';
 import { PanelsView, computeHighlights } from './panels.js';
 import { ChatView } from './chat.js';
 import { DiceOverlay } from './diceView.js';
+import { RulesPanel } from './rules.js';
+
+// ═══════════════════════════ Commandes du chat (/nom args) ═══════════════════════════
+
+const LOCAL_COMMANDS_HELP = [
+  '/aide — cette liste',
+  '/joueurs — état de chaque joueur (connecté, bot, éliminé)',
+  '/etat — phase, tour, version de l’état, mode réseau',
+  '/lien — copie le lien d’invitation',
+  '/regles — affiche ou masque le panneau des règles',
+  '/sync — redemande l’état complet et le chat à l’hôte (affichage désynchronisé)',
+  '/ping — vérifie que l’hôte répond',
+  '/bot [pseudo] — un bot joue à votre place (ou à la place d’un joueur : créateur)',
+  '/humain [pseudo] — reprendre la main après /bot ou un remplacement (joueur connecté)',
+  '/passer — un bot termine le tour en cours du joueur actif (bloqué, absent), puis lui rend la main (créateur, ou votre tour)',
+  '/delai <ms> — vitesse des bots, 0 à 5000 ms (créateur)',
+  '/kick <pseudo> — retirer un joueur du lobby (créateur)',
+];
+
+/** Commandes locales traitées dans l'onglet ; les autres sont envoyées à l'hôte. */
+function runCommand(text) {
+  const ui = activeUi();
+  const client = ui?.client;
+  if (!client) return;
+  const [rawName, ...args] = text.slice(1).trim().split(/\s+/);
+  const name = (rawName ?? '').toLowerCase();
+  const state = client.state;
+  switch (name) {
+    case 'aide':
+    case 'help':
+      return client.localSystem('Commandes : ' + LOCAL_COMMANDS_HELP.join(' · '));
+    case 'joueurs': {
+      if (!state) return;
+      const lines = state.players.map((p) => {
+        const flags = [p.type === 'bot' ? 'bot' : p.connected ? 'connecté' : 'déconnecté', p.controlledByBot && p.type !== 'bot' ? 'joué par un bot' : '', p.alive ? '' : 'éliminé', p.id === state.turn?.playerId ? 'à lui/elle de jouer' : ''].filter(Boolean);
+        return `${p.name} (${flags.join(', ')})`;
+      });
+      return client.localSystem('Joueurs : ' + lines.join(' · '));
+    }
+    case 'etat':
+      if (!state) return;
+      return client.localSystem(
+        `Partie ${state.id} · statut ${state.status} · tour ${state.turnNumber} · phase ${state.turn?.phase ?? '—'} · version ${state.version} · réseau ${client.adapter.constructor.name} · vous : ${client.me?.name ?? '?'}${client.isOwner ? ' (créateur)' : ''}`,
+      );
+    case 'lien':
+      copyLink();
+      return client.localSystem(`Lien d’invitation : ${client.inviteUrl ?? '(indisponible)'}`);
+    case 'regles':
+    case 'règles':
+      app.rules.setOpen(!app.rules.open);
+      return;
+    default:
+      return client.sendCommand(name, args);
+  }
+}
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -77,13 +132,6 @@ const activeUi = () => app.clients[app.active]?.ui;
 function registerClient(client) {
   client.ui = newUi(client);
   app.clients.push(client);
-  client.on('welcome', (w) => {
-    try {
-      sessionStorage.setItem(`risk.token.${w.gameId}`, w.token);
-    } catch {
-      /* stockage indisponible */
-    }
-  });
   client.on('state', () => onState(client));
   client.on('events', (events) => onEvents(client, events));
   client.on('chat', () => {
@@ -98,9 +146,33 @@ function registerClient(client) {
   return client;
 }
 
+/**
+ * Jeton de reconnexion : en localStorage pour survivre à la fermeture de l'onglet
+ * (un nouvel onglet sur le même lien reprend la place automatiquement).
+ * Il est associé au pseudo : deux onglets du même navigateur avec des pseudos
+ * différents (tests, hot-seat) ne se volent pas leur place.
+ */
+const tokenKey = (gameId, name) => `risk.token.${gameId}.${String(name).toLowerCase()}`;
+function saveToken(gameId, name, token) {
+  if (!gameId || !name || !token) return;
+  try {
+    localStorage.setItem(tokenKey(gameId, name), token);
+  } catch {
+    /* stockage indisponible */
+  }
+}
+function loadToken(gameId, name) {
+  try {
+    return localStorage.getItem(tokenKey(gameId, name)) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function createLocalClient(playerName) {
   const client = registerClient(new GameClient(new LocalAdapter(app.runtime)));
   await client.join({ playerName });
+  saveToken(client.gameId, playerName, client.token);
   return client;
 }
 
@@ -117,8 +189,8 @@ function initHome() {
   $('#home-code').addEventListener('keydown', (e) => e.key === 'Enter' && onJoin());
   $('#home-name').addEventListener('keydown', (e) => e.key === 'Enter' && (code ? onJoin() : onCreate()));
 
-  // Reconnexion automatique après un rafraîchissement (jeton en sessionStorage)
-  if (code && savedName && sessionStorage.getItem(`risk.token.${code}`)) onJoin();
+  // Reconnexion automatique après un rafraîchissement ou une réouverture (jeton mémorisé)
+  if (code && savedName && loadToken(code, savedName)) onJoin();
   else if (code) $('#home-name').focus();
 }
 
@@ -141,6 +213,7 @@ async function onCreate() {
     if (NET.wsUrl) {
       const client = registerClient(new GameClient(new WebSocketAdapter(NET.wsUrl)));
       await client.create({ playerName: name, settings: { maxPlayers, botDelayMs: NET.botDelayMs } });
+      saveToken(client.gameId, name, client.token);
     } else {
       const gameId = generateGameCode();
       const inviteUrl = `${location.origin}${location.pathname}?game=${gameId}`;
@@ -158,12 +231,13 @@ async function onJoin() {
   if (!name) return;
   const code = $('#home-code').value.trim().toUpperCase();
   if (!/^[A-Z0-9]{6}$/.test(code)) return homeError('Code de partie invalide (6 caractères).');
-  const token = sessionStorage.getItem(`risk.token.${code}`) ?? undefined;
+  const token = loadToken(code, name);
   const adapter = NET.wsUrl ? new WebSocketAdapter(NET.wsUrl) : new BroadcastAdapter(code);
   const client = registerClient(new GameClient(adapter));
   $('#home-join').disabled = true;
   try {
     await client.join({ gameId: code, playerName: name, token });
+    saveToken(code, name, client.token);
     history.replaceState(null, '', `?game=${code}`);
   } catch (e) {
     app.clients = app.clients.filter((c) => c !== client);
@@ -258,7 +332,8 @@ function leaveGame() {
 function initGame() {
   app.mapView = new MapView($('#map'), onTerritoryClick);
   app.dice = new DiceOverlay($('#map'), app.mapView);
-  app.chatView = new ChatView($('#chat'), (text) => activeUi()?.client.sendChat(text));
+  app.chatView = new ChatView($('#chat'), (text) => (text.startsWith('/') ? runCommand(text) : activeUi()?.client.sendChat(text)));
+  app.rules = new RulesPanel($('#rules'), $('#rules-toggle'));
   app.sidebar = new PanelsView($('#game-header'), $('#panels'), {
     endPhase: () => send({ type: 'END_PHASE' }),
     attack: () => {
@@ -390,6 +465,7 @@ function renderGame() {
   sanitizeSelection(ui, state);
   app.sidebar.render(state, ui);
   app.mapView.update(state, computeHighlights(state, ui));
+  app.rules.update(state, ui.client.me);
   renderChat();
   renderSwitcher();
 }

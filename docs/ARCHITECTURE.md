@@ -131,6 +131,8 @@ adapter.close()
   `computeHighlights` traduit la sélection en surbrillances.
 - `chat.js` : rendu des messages (mentions colorées, privés, système), boutons
   d'insertion `@pseudo`.
+- `rules.js` : panneau d'aide contextuel (règles de la phase en cours, règles
+  générales), fermable, état mémorisé dans le navigateur.
 - `diceView.js` : animation des dés sur le plateau à chaque événement `COMBAT`
   (roulement, valeurs réelles de l'hôte, paires gagnantes/perdantes), ancrée près
   du territoire attaqué via `mapView.toScreen`. Purement décoratif.

@@ -46,6 +46,7 @@ export class GameHost {
     this.chat = []; // historique complet (l'hôte filtre à l'envoi)
     this.botTimer = null;
     this.closed = false;
+    this.tempBots = new Set(); // joueurs dont le tour en cours est fini par un bot (/passer), rendus ensuite
     this.onChange = null; // hook optionnel (debug / persistance)
     this.heartbeatTimer = this.timers.setTimeout(() => this.checkHeartbeats(), HEARTBEAT_TIMEOUT_MS / 2);
   }
@@ -76,6 +77,8 @@ export class GameHost {
           return this.onAction(clientId, msg);
         case C2S.CHAT:
           return this.onChat(clientId, msg);
+        case C2S.COMMAND:
+          return this.onCommand(clientId, msg);
         case C2S.PING:
           return this.sendTo(clientId, { type: S2C.PONG });
         case C2S.LEAVE:
@@ -132,7 +135,19 @@ export class GameHost {
     }
     if (client.playerId) return this.error(clientId, ERROR_CODES.BAD_MESSAGE, 'Déjà dans la partie');
     if (!isValidName(msg.playerName)) return this.error(clientId, ERROR_CODES.INVALID_NAME, 'Pseudo invalide (2-16 caractères, lettres/chiffres/_/-)');
-    if (this.state.status !== 'lobby') return this.error(clientId, ERROR_CODES.GAME_FULL, 'La partie a déjà commencé');
+    if (this.state.status !== 'lobby') {
+      // Partie en cours : on peut reprendre la place d'un humain déconnecté (même remplacé
+      // par un bot) en se présentant avec son pseudo, sans jeton (onglet fermé, autre appareil…).
+      const wanted = String(msg.playerName).toLowerCase();
+      const seatPlayer = this.state.players.find((p) => p.type === 'human' && p.name.toLowerCase() === wanted);
+      const seat = seatPlayer && this.seats.get(seatPlayer.id);
+      if (seat && (!seat.clientId || !this.clients.has(seat.clientId))) {
+        seat.token = randomId('tok'); // nouveau jeton : l'ancien onglet ne peut plus reprendre la place
+        return this.reconnect(clientId, seatPlayer.id, seat);
+      }
+      if (seatPlayer) return this.error(clientId, ERROR_CODES.NAME_TAKEN, `${seatPlayer.name} est déjà connecté·e à cette partie`);
+      return this.error(clientId, ERROR_CODES.GAME_FULL, 'La partie a déjà commencé. Pour reprendre votre place, entrez le pseudo que vous aviez.');
+    }
     const playerId = randomId('p');
     const err = validateAction(this.state, { type: 'ADD_PLAYER', player: { id: playerId, name: msg.playerName, type: 'human' } });
     if (err) return this.error(clientId, err === 'Partie complète' ? ERROR_CODES.GAME_FULL : ERROR_CODES.NAME_TAKEN, err);
@@ -234,6 +249,15 @@ export class GameHost {
     const { state, events } = applyAction(this.state, action);
     this.state = state;
     this.onChange?.(state, events);
+    // Fin d'un tour joué par un bot "temporaire" (/passer) : l'humain reprend la main
+    if (this.tempBots.size && events.some((e) => e.type === 'TURN_STARTED')) {
+      for (const id of [...this.tempBots]) {
+        if (this.state.turn?.playerId === id) continue;
+        this.tempBots.delete(id);
+        const p = getPlayer(this.state, id);
+        if (p?.connected) this.apply({ type: 'SET_CONNECTED', playerId: id, controlledByBot: false });
+      }
+    }
     return events;
   }
 
@@ -308,6 +332,112 @@ export class GameHost {
 
   systemChat(text) {
     this.pushChat({ id: randomId('m'), ts: Date.now(), kind: 'system', from: null, fromName: 'Système', text, mentions: [], to: [] });
+  }
+
+  /** Message système visible par un seul joueur (réponse à une commande). */
+  systemChatTo(playerId, text) {
+    this.pushChat({ id: randomId('m'), ts: Date.now(), kind: 'private', from: null, fromName: 'Système', text, mentions: [], to: [playerId] });
+  }
+
+  // ═════════════════════════ Commandes (/nom args) ═════════════════════════
+
+  /**
+   * Commandes de dépannage tapées dans le chat. Certaines sont réservées au
+   * créateur de la partie. Les commandes purement locales (/aide, /joueurs, /lien…)
+   * sont traitées côté client et n'arrivent jamais ici.
+   */
+  onCommand(clientId, msg) {
+    const playerId = this.clients.get(clientId).playerId;
+    if (!playerId) return this.error(clientId, ERROR_CODES.BAD_MESSAGE, 'Rejoignez la partie d’abord');
+    const me = getPlayer(this.state, playerId);
+    const isOwner = playerId === this.ownerId;
+    const name = String(msg.name ?? '').toLowerCase();
+    const args = Array.isArray(msg.args) ? msg.args.map(String) : [];
+    const reply = (text) => this.systemChatTo(playerId, text);
+    const findPlayer = (n) => {
+      const wanted = String(n ?? '').replace(/^[@#]/, '').toLowerCase();
+      return wanted ? this.state.players.find((p) => p.name.toLowerCase() === wanted) : null;
+    };
+    const inGame = this.state.status === 'setup' || this.state.status === 'playing';
+
+    switch (name) {
+      case 'ping':
+        return reply('pong');
+
+      case 'bot': {
+        // /bot [pseudo] : un bot joue à la place d'un humain (soi-même, ou n'importe qui pour le créateur)
+        const target = args[0] ? findPlayer(args[0]) : me;
+        if (!target) return reply(`Joueur inconnu : ${args[0]}`);
+        if (target.id !== playerId && !isOwner) return reply('Réservé au créateur de la partie (sauf pour vous-même).');
+        if (target.type === 'bot' || target.controlledByBot) return reply(`${target.name} est déjà joué·e par un bot.`);
+        this.apply({ type: 'SET_CONNECTED', playerId: target.id, controlledByBot: true });
+        this.systemChat(`Un bot joue désormais pour ${target.name} (commande de ${me.name}).`);
+        this.broadcastState();
+        this.scheduleBot();
+        return;
+      }
+
+      case 'humain': {
+        // /humain [pseudo] : rend le contrôle à l'humain (s'il est connecté)
+        const target = args[0] ? findPlayer(args[0]) : me;
+        if (!target) return reply(`Joueur inconnu : ${args[0]}`);
+        if (target.id !== playerId && !isOwner) return reply('Réservé au créateur de la partie (sauf pour vous-même).');
+        if (target.type === 'bot') return reply(`${target.name} est un bot de la partie, pas un humain remplacé.`);
+        if (!target.connected) return reply(`${target.name} n’est pas connecté·e : il/elle doit d’abord rejoindre avec son pseudo.`);
+        if (!target.controlledByBot) return reply(`${target.name} joue déjà en humain.`);
+        this.tempBots.delete(target.id);
+        this.apply({ type: 'SET_CONNECTED', playerId: target.id, controlledByBot: false });
+        this.timers.clearTimeout(this.botTimer);
+        this.botTimer = null;
+        this.systemChat(`${target.name} reprend la main (commande de ${me.name}).`);
+        this.broadcastState();
+        return;
+      }
+
+      case 'passer': {
+        // /passer : un bot termine le tour EN COURS du joueur actif (bloqué, absent…), puis lui rend la main
+        if (!inGame || !this.state.turn) return reply('Aucun tour en cours.');
+        const active = getPlayer(this.state, this.state.turn.playerId);
+        if (active.id !== playerId && !isOwner) return reply('Réservé au créateur de la partie (sauf pour votre propre tour).');
+        if (active.controlledByBot) return reply(`${active.name} est déjà joué·e par un bot.`);
+        this.tempBots.add(active.id);
+        this.apply({ type: 'SET_CONNECTED', playerId: active.id, controlledByBot: true });
+        this.systemChat(`Un bot termine le tour de ${active.name} (commande de ${me.name}).`);
+        this.broadcastState();
+        this.scheduleBot();
+        return;
+      }
+
+      case 'delai': {
+        // /delai <ms> : vitesse des bots (créateur)
+        if (!isOwner) return reply('Réservé au créateur de la partie.');
+        const ms = Number(args[0]);
+        if (!Number.isFinite(ms)) return reply('Usage : /delai <millisecondes> (0 à 5000)');
+        this.state.settings.botDelayMs = Math.max(0, Math.min(5000, Math.round(ms)));
+        this.state.version += 1;
+        this.systemChat(`Délai des bots réglé à ${this.state.settings.botDelayMs} ms.`);
+        this.broadcastState();
+        return;
+      }
+
+      case 'kick': {
+        // /kick <pseudo> : retirer un joueur du lobby (créateur)
+        if (!isOwner) return reply('Réservé au créateur de la partie.');
+        if (this.state.status !== 'lobby') return reply('Uniquement dans le lobby. En partie, utilisez /bot <pseudo>.');
+        const target = findPlayer(args[0]);
+        if (!target) return reply(`Joueur inconnu : ${args[0]}`);
+        return this.onLobby(clientId, { op: 'kick', playerId: target.id });
+      }
+
+      case 'sync':
+        // /sync : renvoie l'état complet et l'historique du chat (affichage désynchronisé)
+        this.sendTo(clientId, { type: S2C.STATE, state: redactStateFor(this.state, playerId) });
+        this.sendChatHistory(clientId, playerId);
+        return reply('État et chat resynchronisés.');
+
+      default:
+        return reply(`Commande inconnue : /${name}. Tapez /aide.`);
+    }
   }
 
   pushChat(message) {
