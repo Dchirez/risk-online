@@ -3,3 +3,5 @@ tools/cache/
 tools/node_modules/
 tools/package-lock.json
 node_modules/
+# Sauvegardes des parties du serveur (une par fichier JSON)
+server/data/
