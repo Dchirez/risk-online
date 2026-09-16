@@ -14,7 +14,7 @@ L'identité du joueur est déduite de la connexion, jamais du contenu du message
 
 | type      | Champs                                                    | Quand                                   |
 |-----------|-----------------------------------------------------------|-----------------------------------------|
-| `create`  | `playerName`, `settings: { maxPlayers (5-7), botDelayMs }` | Créer une partie (le serveur génère le code) |
+| `create`  | `playerName`, `settings: { maxPlayers (5-7), botDelayMs, mapId }` | Créer une partie (le serveur génère le code). `mapId` ∈ catalogue de `src/core/map.js` (`world`, `middle_earth`), défaut `world` |
 | `join`    | `gameId`, `playerName`, `token?`                          | Rejoindre ; avec `token` = reconnexion   |
 | `lobby`   | `op: 'start' \| 'addBot' \| 'kick' \| 'settings'`, + champs | Réservé au créateur (`isOwner`)        |
 | `action`  | `action: { type, ... }`, `seq`                            | Coup de jeu (voir §3)                    |
@@ -77,6 +77,10 @@ Exemple d'échange complet :
 `PLAYER_ELIMINATED`, `CARD_DRAWN`, `FORTIFIED`, `GAME_OVER`, `PLAYER_JOINED`, `PLAYER_LEFT`.
 
 ## 4. Vue d'état envoyée (`state`)
+
+`state.mapId` identifie la carte jouée ; le client construit sa vue à partir du
+catalogue local (les données de carte ne transitent jamais par le réseau, les
+deux côtés embarquent les mêmes fichiers `src/core/maps/*.js`).
 
 `redactStateFor(state, playerId)` (src/core/state.js) :
 - `players[i].cards` n'est rempli que pour le destinataire ; les autres n'ont que `cardCount` ;
