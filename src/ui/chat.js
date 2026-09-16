@@ -16,7 +16,7 @@ export class ChatView {
     this.container = container;
     this.onSend = onSend;
     container.innerHTML = `
-      <div class="chat-head"><strong>Chat</strong><span class="muted">@pseudo = mention · #pseudo = message privé</span></div>
+      <div class="chat-head"><strong>Chat</strong><span class="muted">@pseudo = mention · #pseudo = privé · /aide = commandes</span></div>
       <div class="chat-list"></div>
       <div class="chat-suggest"></div>
       <form class="chat-form">
@@ -60,7 +60,11 @@ export class ChatView {
     this.list.innerHTML = messages
       .map((m) => {
         const time = new Date(m.ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-        if (m.kind === 'system') return `<div class="msg system"><span class="time">${time}</span>${escapeHtml(m.text)}</div>`;
+        if (m.kind === 'system' || m.from === null) {
+          // Message système public, ou réponse de commande visible par vous seul
+          const priv = m.kind === 'private' ? ' private' : '';
+          return `<div class="msg system${priv}"><span class="time">${time}</span>${priv ? '🔒 ' : ''}${escapeHtml(m.text)}</div>`;
+        }
         const from = byId[m.from];
         const color = from ? playerHex(from) : '#aaa';
         const cls = ['msg'];

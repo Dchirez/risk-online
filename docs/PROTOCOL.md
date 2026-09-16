@@ -19,6 +19,7 @@ L'identité du joueur est déduite de la connexion, jamais du contenu du message
 | `lobby`   | `op: 'start' \| 'addBot' \| 'kick' \| 'settings'`, + champs | Réservé au créateur (`isOwner`)        |
 | `action`  | `action: { type, ... }`, `seq`                            | Coup de jeu (voir §3)                    |
 | `chat`    | `text` (≤ 500 caractères)                                 | Message de chat (mentions/privé parsés côté hôte) |
+| `command` | `name`, `args: [...]`                                     | Commande `/name args` tapée dans le chat : `bot`, `humain`, `passer`, `delai`, `kick`, `sync`, `ping`. Réponse par un message `chat` système privé (`from: null`, `to: [moi]`). |
 | `ping`    | —                                                         | Toutes les 5 s (heartbeat)               |
 | `leave`   | —                                                         | Quitter proprement                       |
 
@@ -113,3 +114,12 @@ Structure complète : voir l'en-tête de `src/core/state.js`.
 - Le joueur peut revenir à tout moment avec son `token` (`join` + `token`) :
   il reprend la main, `player{op:'reconnected'}`.
 - Dans le lobby, une déconnexion libère simplement la place.
+
+### Reprise de place sans jeton
+
+Si un `join` arrive **sans jeton valide** alors que la partie a commencé, l'hôte
+cherche un joueur humain portant le même pseudo (insensible à la casse) dont la
+connexion est perdue (onglet fermé, remplacé par un bot…). S'il existe, la place
+lui est rendue : nouveau jeton, `welcome`, `player{op:'reconnected'}`, et le bot
+rend la main. Sinon : `error{code:'NAME_TAKEN'}` (pseudo déjà connecté) ou
+`error{code:'GAME_FULL'}` (partie commencée, aucun siège de ce nom).

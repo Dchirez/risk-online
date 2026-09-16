@@ -14,6 +14,7 @@ export const C2S = Object.freeze({
   LOBBY: 'lobby', // { op:'start'|'addBot'|'addLocal'|'kick'|'settings', ... } (hôte de partie uniquement)
   ACTION: 'action', // { action:{type,...}, seq }  seq = numéro client pour corréler les erreurs
   CHAT: 'chat', // { text }
+  COMMAND: 'command', // { name, args:[] }  commande "/nom args" tapée dans le chat (dépannage, gestion)
   PING: 'ping', // { }   battement de cœur
   LEAVE: 'leave', // { }
 });

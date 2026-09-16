@@ -154,6 +154,31 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 0;
 .toast.info { background: #14232b; color: #d0ecff; border-color: #2a4f6b; }
 .toast[hidden] { display: none; }
 
+/* ═══════════════════════════ Panneau des règles du tour ═══════════════════════════ */
+.rules {
+  position: absolute; top: 10px; right: 10px; width: 320px; max-width: calc(100% - 20px); max-height: calc(100% - 20px);
+  overflow-y: auto; z-index: 5; background: rgba(255, 248, 225, .96); color: #2b2010; border: 2px solid #6b5a33; border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.35); font-size: 12.5px; line-height: 1.4;
+}
+.rules[hidden] { display: none; }
+.rules-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #c9b688; font-family: Georgia, serif; font-size: 14px; }
+.rules-close { background: none; border: 0; font-size: 16px; cursor: pointer; color: #6b5a33; padding: 0 4px; }
+.rules-close:hover { color: #2b2010; }
+.rules-body, .rules-general { padding: 8px 12px; }
+.rules p { margin: 4px 0 6px; }
+.rules ul { margin: 4px 0 6px; padding-left: 18px; }
+.rules li { margin: 2px 0; }
+.rules code { background: rgba(107,90,51,.15); padding: 0 4px; border-radius: 4px; }
+.rules .warn { background: #ffe3a1; border-left: 3px solid #b7791f; padding: 4px 8px; border-radius: 4px; }
+.rules .muted { color: #6b5a33; }
+.rules-general { border-top: 1px solid #c9b688; }
+.rules-general summary { cursor: pointer; font-weight: 700; color: #4a3d1e; }
+.rules-continents { list-style: none; padding-left: 4px; columns: 2; }
+.rules-continents .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; border: 1px solid rgba(0,0,0,.3); }
+.rules-foot { padding: 6px 12px; border-top: 1px solid #c9b688; color: #6b5a33; font-size: 11px; }
+#rules-toggle.active { outline: 2px solid var(--accent); }
+.msg.system.private { background: rgba(240,180,41,.12); border-left: 2px solid var(--accent); }
+
 /* ═══════════════════════════ Dés qui roulent sur le plateau ═══════════════════════════ */
 .dice-overlay {
   position: absolute; z-index: 6; pointer-events: none; transform: translate(-50%, -100%);
