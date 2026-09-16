@@ -325,3 +325,80 @@ test('Terre du Milieu : montagnes infranchissables, entrées du Mordor, partie c
   assert.equal(res.state.status, 'finished', `partie non terminée après ${res.steps} coups`);
   assert.ok(m.TERRITORY_IDS.every((t) => res.state.territories[t].owner === res.state.winner));
 });
+
+// ───────────────── Anti-boule de neige : une seule carte par tour ─────────────────
+
+/** Amène la partie à la phase d'attaque du premier joueur. */
+function toAttackPhase(seed = 5) {
+  let { state } = applyAction(lobbyWith(5, seed), { type: 'START_GAME' });
+  while (state.status === 'setup' || state.turn.phase === 'reinforce') {
+    state = applyAction(state, decideBotAction(state, state.turn.playerId)).state;
+  }
+  return state;
+}
+
+test('une seule carte piochée par tour, quel que soit le nombre de conquêtes', () => {
+  let state = toAttackPhase(5);
+  const me = state.turn.playerId;
+  const map = getMap(state.mapId);
+  // On donne à l'attaquant une armée écrasante partout : il va enchaîner les conquêtes
+  for (const t of map.TERRITORY_IDS) if (state.territories[t].owner === me) state.territories[t].troops = 60;
+  let conquests = 0;
+  let drawn = 0;
+  for (let i = 0; i < 400; i++) {
+    const moves = possibleMoves(state, me);
+    if (state.turn.pendingOccupy) {
+      state = applyAction(state, { type: 'OCCUPY', playerId: me, count: state.turn.pendingOccupy.min }).state;
+      continue;
+    }
+    if (!moves.attacks.length) break;
+    const a = moves.attacks[0];
+    const { state: next, events } = applyAction(state, { type: 'ATTACK', playerId: me, from: a.from, to: a.to, dice: a.maxDice });
+    state = next;
+    conquests += events.filter((e) => e.type === 'TERRITORY_CONQUERED').length;
+    drawn += events.filter((e) => e.type === 'CARD_DRAWN').length;
+    if (state.status === 'finished') break;
+  }
+  assert.ok(conquests >= 5, `il faut plusieurs conquêtes pour le test (${conquests})`);
+  assert.equal(drawn, 0, 'aucune carte piochée pendant la phase d’attaque');
+  if (state.status !== 'finished') {
+    // Fin du tour : exactement une carte, malgré les conquêtes multiples
+    const before = state.players.find((p) => p.id === me).cards.length;
+    while (state.turn && state.turn.playerId === me) {
+      state = applyAction(state, { type: 'END_PHASE', playerId: me }).state;
+    }
+    assert.equal(state.players.find((p) => p.id === me).cards.length, before + 1);
+  }
+});
+
+test('élimination : l’attaquant ne récupère qu’une carte, le reste va à la défausse', () => {
+  let state = toAttackPhase(11);
+  const map = getMap(state.mapId);
+  const me = state.turn.playerId;
+  const moves = possibleMoves(state, me).attacks;
+  const m = moves[0];
+  const victimId = state.territories[m.to].owner;
+  // La victime ne garde qu'un seul territoire (celui attaqué) et tient 5 cartes
+  for (const t of map.TERRITORY_IDS) if (state.territories[t].owner === victimId && t !== m.to) state.territories[t].owner = me;
+  const victim = state.players.find((p) => p.id === victimId);
+  victim.cards = state.cards.deck.splice(0, 5);
+  state.territories[m.to].troops = 1;
+  state.territories[m.from].troops = 40;
+
+  const totalBefore = state.players.reduce((s, p) => s + p.cards.length, 0) + state.cards.deck.length + state.cards.discard.length;
+  const attackerBefore = state.players.find((p) => p.id === me).cards.length;
+  const discardBefore = state.cards.discard.length;
+  let eliminated = false;
+  for (let i = 0; i < 40 && !eliminated; i++) {
+    const { state: next, events } = applyAction(state, { type: 'ATTACK', playerId: me, from: m.from, to: m.to, dice: 3 });
+    state = next;
+    eliminated = events.some((e) => e.type === 'PLAYER_ELIMINATED');
+  }
+  assert.ok(eliminated, 'la victime doit être éliminée');
+  const attacker = state.players.find((p) => p.id === me);
+  assert.equal(attacker.cards.length, attackerBefore + 1, 'une seule carte héritée');
+  assert.equal(state.players.find((p) => p.id === victimId).cards.length, 0);
+  assert.equal(state.cards.discard.length, discardBefore + 4, 'les 4 autres cartes sont défaussées');
+  const totalAfter = state.players.reduce((s, p) => s + p.cards.length, 0) + state.cards.deck.length + state.cards.discard.length;
+  assert.equal(totalAfter, totalBefore, 'aucune carte perdue');
+});

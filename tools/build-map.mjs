@@ -127,7 +127,8 @@ const CONTINENTS = {
   EU: { name: 'Europe', bonus: 8, color: '#3d5fd0', label: [-26, 50] },
   AF: { name: 'Afrique', bonus: 7, color: '#b03aa0', label: [-4, -34] },
   AS: { name: 'Asie', bonus: 12, color: '#3fa34d', label: [152, 12] },
-  OC: { name: 'Océanie', bonus: 3, color: '#6b6f78', label: [170, -44] },
+  // Médaillon posé en plein Pacifique : au-dessus de la Nouvelle-Zélande il masquait ses troupes.
+  OC: { name: 'Océanie', bonus: 3, color: '#6b6f78', label: [162, -22] },
 };
 
 /** Routes maritimes (adjacences ajoutées à la main). */

@@ -379,7 +379,13 @@ export class MapView {
       e.preventDefault();
       this.zoomAt(Math.pow(1.0015, -e.deltaY), e.clientX, e.clientY);
     }, { passive: false });
-    svg.addEventListener('dblclick', (e) => this.zoomAt(1.8, e.clientX, e.clientY));
+    // Double-clic : aucun zoom (on zoome à la molette ou aux boutons), et surtout
+    // pas de sélection du texte des noms de territoires par le navigateur.
+    svg.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      window.getSelection()?.removeAllRanges();
+    });
+    svg.addEventListener('selectstart', (e) => e.preventDefault());
   }
 
   setHover(id) {

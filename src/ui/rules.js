@@ -120,8 +120,8 @@ function phaseText(state, me) {
           <li>Les dés sont triés et comparés deux à deux : le plus haut gagne, <b>l’égalité profite au défenseur</b>. Chaque comparaison perdue coûte une troupe.</li>
           <li>« Attaque totale » enchaîne les jets jusqu’à la conquête ou l’épuisement.</li>
           <li>Territoire à 0 → conquis : vous y déplacez au moins autant de troupes que de dés lancés.</li>
-          <li>Au moins une conquête dans le tour = <b>1 carte</b> à la fin du tour.</li>
-          <li>Éliminer un joueur vous donne ses cartes (6 ou plus → échange immédiat).</li>
+          <li>Au moins une conquête dans le tour = <b>1 carte</b> à la fin du tour. Jamais plus, même en conquérant dix territoires.</li>
+          <li>Éliminer un joueur vous donne <b>une seule</b> de ses cartes (tirée au hasard), le reste part à la défausse.</li>
         </ul>
         <p>« Terminer les attaques » passe au déplacement.</p>`;
     }
