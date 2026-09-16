@@ -81,6 +81,8 @@ Variables d'environnement :
 |---|---|---|
 | `PORT` | port d'écoute WebSocket (à ne pas exposer directement : passer par le reverse proxy) | `8080` |
 | `FRONT_URL` | URL publique du site, utilisée pour fabriquer les liens d'invitation | `http://localhost:5180/` |
+| `DATA_DIR` | dossier des sauvegardes (un fichier JSON par partie) ; l'utilisateur du service doit pouvoir y écrire | `server/data` |
+| `RETENTION_HOURS` | durée de conservation d'une partie sans aucun joueur connecté | `96` (4 jours) |
 
 ### Lancement permanent (systemd)
 
@@ -155,9 +157,19 @@ risk.skayzax.fr {
 cd /opt/risk-online && git pull && sudo systemctl restart risk
 ```
 
-Les parties en cours sont en mémoire : un redémarrage les termine. Les joueurs
-gardent leur jeton de reconnexion dans l'onglet, mais la partie elle-même n'est pas
-persistée (voir `serialize` / `deserialize` dans `src/core/state.js` si besoin un jour).
+### Sauvegarde et cycle de vie des parties
+
+- Chaque partie est écrite dans `DATA_DIR/games/<code>.json` à chaque changement
+  (état, chat, réglages) et **rechargée au redémarrage** du serveur : une mise à
+  jour ou un plantage ne fait rien perdre. Les joueurs reviennent avec leur jeton
+  (automatique) ou simplement leur pseudo.
+- **Personne de connecté = pause** : les bots ne jouent pas sans public. Au retour
+  du premier joueur, la partie reprend et les absents sont remplacés par des bots
+  15 s plus tard (ils peuvent revenir à tout moment).
+- Une partie sans présence humaine depuis **96 h** (`RETENTION_HOURS`) est supprimée.
+- Une partie **terminée** est supprimée immédiatement ; un lobby resté vide 1 h aussi.
+- Pour que le service puisse écrire, le dossier doit appartenir à son utilisateur :
+  `sudo mkdir -p /opt/risk-online/server/data && sudo chown -R www-data /opt/risk-online/server/data`.
 
 ---
 
@@ -174,6 +186,7 @@ Erreurs fréquentes :
 | Symptôme | Cause probable |
 |---|---|
 | « Connexion WebSocket impossible » | `wsUrl` faux, port fermé, ou `ws://` depuis une page HTTPS |
-| « Partie introuvable » | code erroné, ou le serveur a redémarré depuis la création |
+| « Partie introuvable » | code erroné, partie terminée, ou expirée (96 h sans joueur) |
+| Les parties disparaissent au redémarrage | `DATA_DIR` non inscriptible : vérifier le journal (`[persist] échec de sauvegarde`) |
 | Les joueurs sont déconnectés au bout d'une minute | le proxy coupe les connexions inactives : augmenter `proxy_read_timeout` |
 | Le lien d'invitation pointe vers `localhost` | `FRONT_URL` non renseigné au lancement du serveur |

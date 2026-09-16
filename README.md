@@ -72,6 +72,9 @@ test/                     tests Node (`node --test`)
   `/humain [pseudo]`, `/passer`, `/delai <ms>`, `/kick <pseudo>` (traitées par l'hôte,
   certaines réservées au créateur). Elles servent à débloquer une partie : joueur
   absent, tour bloqué, joueur remplacé par un bot qui revient…
+- Pause : si plus personne n'est connecté, les bots s'arrêtent ; la partie reprend
+  au retour du premier joueur. Côté serveur, les parties sont sauvegardées sur disque
+  (rechargées au redémarrage), conservées 96 h sans joueur, supprimées dès la fin.
 - Reconnexion : le jeton est mémorisé dans le navigateur (nouvel onglet sur le même
   lien = reprise automatique). Sans jeton (autre appareil, navigateur vidé), il
   suffit de rejoindre avec **le même pseudo** : la place d'un humain déconnecté,

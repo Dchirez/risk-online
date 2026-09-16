@@ -20,6 +20,8 @@ const BOT_NAMES = ['Napoléon', 'Sun_Tzu', 'Hannibal', 'Jeanne', 'Gengis', 'Clé
 
 /** Délai avant qu'un bot ne remplace un humain déconnecté (ms). */
 const TAKEOVER_DELAY_MS = 15000;
+/** Nombre maximal de messages de chat conservés (mémoire et sauvegarde). */
+const MAX_CHAT = 400;
 /** Sans battement de cœur pendant ce délai, le client est considéré déconnecté. */
 const HEARTBEAT_TIMEOUT_MS = 75000; // large : les onglets en arrière-plan ralentissent les timers
 
@@ -47,7 +49,9 @@ export class GameHost {
     this.botTimer = null;
     this.closed = false;
     this.tempBots = new Set(); // joueurs dont le tour en cours est fini par un bot (/passer), rendus ensuite
-    this.onChange = null; // hook optionnel (debug / persistance)
+    this.lastActivity = Date.now(); // dernière présence d'un humain (sert à l'expiration côté serveur)
+    this.onChange = null; // hook optionnel (state, events) après chaque action
+    this.onDirty = null; // hook optionnel : quelque chose à sauvegarder (état, chat, réglages)
     this.heartbeatTimer = this.timers.setTimeout(() => this.checkHeartbeats(), HEARTBEAT_TIMEOUT_MS / 2);
   }
 
@@ -65,6 +69,7 @@ export class GameHost {
     if (!client) this.addClient(clientId);
     const c = this.clients.get(clientId);
     c.lastSeen = Date.now();
+    if (c.playerId) this.lastActivity = c.lastSeen; // un humain est présent (même un simple ping)
     if (!msg || typeof msg.type !== 'string') return this.error(clientId, ERROR_CODES.BAD_MESSAGE, 'Message invalide');
 
     try {
@@ -114,9 +119,42 @@ export class GameHost {
     this.apply({ type: 'SET_CONNECTED', playerId, connected: false });
     this.broadcast({ type: S2C.PLAYER, op: 'disconnected', playerId });
     this.systemChat(`${getPlayer(this.state, playerId).name} s’est déconnecté·e.`);
-    this.broadcastState();
     if (seat) {
       this.timers.clearTimeout(seat.takeoverTimer);
+      seat.takeoverTimer = this.timers.setTimeout(() => this.botTakeover(playerId), TAKEOVER_DELAY_MS);
+    }
+    if (!this.hasConnectedHuman()) this.pause();
+    this.broadcastState();
+  }
+
+  // ═════════════════════════ Pause (aucun humain connecté) ═════════════════════════
+
+  /** Au moins un joueur humain a une connexion active. */
+  hasConnectedHuman() {
+    for (const c of this.clients.values()) {
+      if (c.playerId && getPlayer(this.state, c.playerId)?.type === 'human') return true;
+    }
+    return false;
+  }
+
+  /** Vrai quand la partie est figée : personne n'est là, les bots ne jouent pas. */
+  get paused() {
+    return (this.state.status === 'setup' || this.state.status === 'playing') && !this.hasConnectedHuman();
+  }
+
+  pause() {
+    this.timers.clearTimeout(this.botTimer);
+    this.botTimer = null;
+    if (this.state.status === 'setup' || this.state.status === 'playing') {
+      this.systemChat('Partie en pause : plus aucun joueur connecté. Les bots ne jouent pas en votre absence.');
+    }
+  }
+
+  /** Arme le remplacement par un bot pour chaque humain absent (après une reprise ou un rechargement). */
+  armTakeovers() {
+    for (const [playerId, seat] of this.seats) {
+      const p = getPlayer(this.state, playerId);
+      if (!p || p.connected || p.controlledByBot || seat.takeoverTimer) continue;
       seat.takeoverTimer = this.timers.setTimeout(() => this.botTakeover(playerId), TAKEOVER_DELAY_MS);
     }
   }
@@ -171,10 +209,17 @@ export class GameHost {
     if (seat.clientId && seat.clientId !== clientId && this.clients.has(seat.clientId)) {
       this.clients.get(seat.clientId).playerId = null;
     }
+    const wasPaused = this.paused;
     seat.clientId = clientId;
     this.timers.clearTimeout(seat.takeoverTimer);
+    seat.takeoverTimer = null;
     this.clients.get(clientId).playerId = playerId;
+    this.lastActivity = Date.now();
     this.apply({ type: 'SET_CONNECTED', playerId, connected: true, controlledByBot: false });
+    if (wasPaused) {
+      this.systemChat('Reprise de la partie.');
+      this.armTakeovers(); // les autres absents seront remplacés par des bots dans 15 s
+    }
     this.sendTo(clientId, { type: S2C.WELCOME, playerId, token: seat.token, gameId: this.gameId, inviteUrl: this.inviteUrl, isOwner: this.ownerId === playerId });
     this.sendChatHistory(clientId, playerId);
     this.broadcast({ type: S2C.PLAYER, op: 'reconnected', playerId });
@@ -209,6 +254,7 @@ export class GameHost {
           this.state.settings.maxPlayers = msg.maxPlayers;
         if (Number.isFinite(msg.botDelayMs)) this.state.settings.botDelayMs = Math.max(0, Math.min(5000, msg.botDelayMs));
         this.state.version += 1;
+        this.onDirty?.();
         break;
       case 'start': {
         // Les places vides sont comblées par des bots
@@ -249,6 +295,7 @@ export class GameHost {
     const { state, events } = applyAction(this.state, action);
     this.state = state;
     this.onChange?.(state, events);
+    this.onDirty?.();
     // Fin d'un tour joué par un bot "temporaire" (/passer) : l'humain reprend la main
     if (this.tempBots.size && events.some((e) => e.type === 'TURN_STARTED')) {
       for (const id of [...this.tempBots]) {
@@ -266,6 +313,7 @@ export class GameHost {
     if (this.closed || this.botTimer) return;
     const s = this.state;
     if (s.status !== 'setup' && s.status !== 'playing') return;
+    if (!this.hasConnectedHuman()) return; // partie en pause : les bots ne jouent pas sans public
     const active = getPlayer(s, s.turn.playerId);
     if (!active?.controlledByBot) return;
     this.botTimer = this.timers.setTimeout(() => {
@@ -299,6 +347,8 @@ export class GameHost {
   }
 
   botTakeover(playerId) {
+    const seat = this.seats.get(playerId);
+    if (seat) seat.takeoverTimer = null;
     const p = getPlayer(this.state, playerId);
     if (!p || p.connected || p.controlledByBot) return;
     this.apply({ type: 'SET_CONNECTED', playerId, controlledByBot: true });
@@ -415,6 +465,7 @@ export class GameHost {
         if (!Number.isFinite(ms)) return reply('Usage : /delai <millisecondes> (0 à 5000)');
         this.state.settings.botDelayMs = Math.max(0, Math.min(5000, Math.round(ms)));
         this.state.version += 1;
+        this.onDirty?.();
         this.systemChat(`Délai des bots réglé à ${this.state.settings.botDelayMs} ms.`);
         this.broadcastState();
         return;
@@ -442,6 +493,8 @@ export class GameHost {
 
   pushChat(message) {
     this.chat.push(message);
+    if (this.chat.length > MAX_CHAT) this.chat.splice(0, this.chat.length - MAX_CHAT); // borne la mémoire et la sauvegarde
+    this.onDirty?.();
     for (const [clientId, c] of this.clients) {
       if (c.playerId && canSeeChat(message, c.playerId)) this.sendTo(clientId, { type: S2C.CHAT, message });
     }
@@ -491,8 +544,52 @@ export class GameHost {
     for (const seat of this.seats.values()) this.timers.clearTimeout(seat.takeoverTimer);
   }
 
-  /** Vrai s'il ne reste plus aucun humain vivant (utile au serveur pour nettoyer). */
+  /** Vrai s'il ne reste plus aucun humain vivant et connecté. */
   isAbandoned() {
     return !alivePlayers(this.state).some((p) => p.type === 'human' && p.connected);
+  }
+
+  // ═════════════════════════ Sauvegarde / rechargement ═════════════════════════
+
+  /**
+   * Instantané JSON complet de la partie (état, jetons, chat…). Le serveur
+   * l'écrit sur disque à chaque changement (hook onDirty) et le relit au démarrage.
+   */
+  serialize() {
+    return {
+      version: 1,
+      gameId: this.gameId,
+      inviteUrl: this.inviteUrl,
+      ownerId: this.ownerId,
+      state: this.state,
+      seats: [...this.seats].map(([playerId, s]) => [playerId, { token: s.token }]),
+      chat: this.chat,
+      tempBots: [...this.tempBots],
+      lastActivity: this.lastActivity,
+      savedAt: Date.now(),
+    };
+  }
+
+  /**
+   * Recrée une partie depuis un instantané. Tous les humains sont marqués
+   * déconnectés (aucune connexion n'a survécu) : la partie est en pause jusqu'au
+   * retour d'un joueur, qui reprend sa place avec son jeton ou son pseudo.
+   */
+  static restore(snapshot, { sendTo, timers }) {
+    const host = new GameHost({ gameId: snapshot.gameId, inviteUrl: snapshot.inviteUrl, sendTo, timers });
+    host.state = snapshot.state;
+    host.ownerId = snapshot.ownerId;
+    host.chat = snapshot.chat ?? [];
+    host.tempBots = new Set(snapshot.tempBots ?? []);
+    host.lastActivity = snapshot.lastActivity ?? Date.now();
+    for (const [playerId, s] of snapshot.seats ?? []) host.seats.set(playerId, { token: s.token, clientId: null, takeoverTimer: null });
+    for (const p of host.state.players) {
+      if (p.type === 'human') {
+        p.connected = false;
+        p.controlledByBot = false; // ils reprendront en humain ; les bots ne jouent pas tant que personne n'est là
+      }
+    }
+    host.state.version += 1;
+    return host;
   }
 }
