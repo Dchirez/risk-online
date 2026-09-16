@@ -25,6 +25,12 @@ import { playerHex } from '../core/state.js';
 const NS = 'http://www.w3.org/2000/svg';
 const BADGE_R = 13;
 const DRAG_THRESHOLD = 4; // px avant de considérer un glissement
+/**
+ * Délai minimal entre deux clics pris en compte SUR LE MÊME territoire : évite
+ * qu'un double-clic ne pose deux troupes ou n'enchaîne deux actions. Cliquer sur
+ * un autre territoire reste immédiat.
+ */
+const CLICK_COOLDOWN_MS = 350;
 const OCEAN = '#d8c48f';
 
 function el(tag, attrs = {}, parent) {
@@ -367,7 +373,7 @@ export class MapView {
         if (drag && !wasDrag) {
           const p = this.toMap(e.clientX, e.clientY);
           const id = this.map.territoryAt(p.x, p.y);
-          if (id) this.onClick(id);
+          if (id && this.acceptClick(id)) this.onClick(id);
         }
         drag = null;
       }
@@ -386,6 +392,19 @@ export class MapView {
       window.getSelection()?.removeAllRanges();
     });
     svg.addEventListener('selectstart', (e) => e.preventDefault());
+  }
+
+  /**
+   * Anti-rebond : renvoie faux si le même territoire vient d'être cliqué il y a
+   * moins de CLICK_COOLDOWN_MS (double-clic involontaire). Un clic sur un autre
+   * territoire passe toujours, pour ne pas ralentir le jeu.
+   */
+  acceptClick(id) {
+    const now = Date.now();
+    if (id === this.lastClickId && now - this.lastClickAt < CLICK_COOLDOWN_MS) return false;
+    this.lastClickId = id;
+    this.lastClickAt = now;
+    return true;
   }
 
   setHover(id) {
