@@ -114,6 +114,13 @@ Structure complète : voir l'en-tête de `src/core/state.js`.
 - Le joueur peut revenir à tout moment avec son `token` (`join` + `token`) :
   il reprend la main, `player{op:'reconnected'}`.
 - Dans le lobby, une déconnexion libère simplement la place.
+- **Pause** : quand plus aucun humain n'est connecté, l'hôte ne fait plus jouer les
+  bots (message système « Partie en pause »). Au retour d'un joueur, la partie
+  reprend (« Reprise de la partie ») et les remplacements par des bots sont réarmés.
+- **Persistance (serveur)** : `GameHost.serialize()` / `GameHost.restore()` —
+  instantané JSON (état, jetons, chat) écrit à chaque changement via le hook
+  `onDirty`, rechargé au démarrage. Partie terminée supprimée aussitôt, partie
+  sans présence humaine supprimée après 96 h.
 
 ### Reprise de place sans jeton
 
