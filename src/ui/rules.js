@@ -114,16 +114,16 @@ function phaseText(state, me) {
         <ul>
           <li><b>${d.base}</b> pour vos territoires (le plus grand de 3 et territoires ÷ 3).</li>
           <li><b>${d.bonus}</b> de bonus de continent(s) entier(s).</li>
-          <li>Cartes : 3 symboles identiques ou 3 différents (le joker remplace n’importe lequel) → 4, 6, 8, 10, 12, 15 troupes puis +5 à chaque échange. +2 sur un territoire de la combinaison que vous possédez.</li>
+          <li>Cartes : 3 symboles identiques ou 3 différents (le joker remplace n’importe lequel) → 4, 6, 8, 10, 12 troupes, puis <b>15 au maximum</b> pour tous les échanges suivants. +2 posées directement sur un territoire de la combinaison que vous possédez.</li>
         </ul>
-        <p>Cliquez sur vos territoires pour placer (réglez 1 / 3 / 5 / tout par clic). Reste : <b>${turn.reinforcements}</b>. Puis « Passer à l’attaque ».</p>`;
+        <p>Cliquez sur vos territoires pour placer (réglez 1 / 3 / 5 / tout par clic). Reste : <b>${turn.reinforcements}</b>. Puis « Passer à l’attaque ».</p>
+        <p class="muted">Tout se pose <b>maintenant</b> : une fois l’attaque commencée, plus aucun renfort ni échange de cartes jusqu’au tour suivant.</p>`;
     }
     case 'attack': {
       const occ = turn.pendingOccupy
         ? `<p class="warn">Territoire conquis ! Choisissez combien de troupes y entrent (au moins autant que de dés lancés).</p>`
         : '';
-      const mustEx = turn.mustExchange ? `<p class="warn">6 cartes ou plus après une élimination : échangez avant de continuer.</p>` : '';
-      return `${occ}${mustEx}<p>Attaquez autant de fois que vous voulez, ou pas du tout.</p>
+      return `${occ}<p>Attaquez autant de fois que vous voulez, ou pas du tout.</p>
         <ul>
           <li>Cliquez sur un de vos territoires ayant <b>au moins 2 troupes</b>, puis sur un voisin ennemi (en rouge).</li>
           <li>Vous lancez 1 à 3 dés (jamais plus que troupes − 1) ; le défenseur 1 ou 2 dés (selon ses troupes).</li>
@@ -131,7 +131,7 @@ function phaseText(state, me) {
           <li>« Attaque totale » enchaîne les jets jusqu’à la conquête ou l’épuisement.</li>
           <li>Territoire à 0 → conquis : vous y déplacez au moins autant de troupes que de dés lancés.</li>
           <li>Au moins une conquête dans le tour = <b>1 carte</b> à la fin du tour. Jamais plus, même en conquérant dix territoires.</li>
-          <li>Éliminer un joueur vous donne <b>une seule</b> de ses cartes (tirée au hasard), le reste part à la défausse.</li>
+          <li>Éliminer un joueur vous donne <b>une seule</b> de ses cartes (tirée au hasard), le reste part à la défausse. Elle ne sera échangeable qu’au tour suivant.</li>
         </ul>
         <p>« Terminer les attaques » passe au déplacement.</p>`;
     }

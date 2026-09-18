@@ -97,16 +97,17 @@ export function validateAction(state, action) {
         if (count > turn.reinforcements) return 'Pas assez de troupes à placer';
         return null;
       }
-      if (turn.phase !== 'reinforce' && turn.phase !== 'attack') return 'Placement impossible dans cette phase';
+      // Toutes les troupes se posent en début de tour : plus de renfort surprise
+      // au milieu d'une offensive (on ne peut plus « recharger » entre deux attaques).
+      if (turn.phase !== 'reinforce') return 'Les renforts se placent uniquement en début de tour, avant d’attaquer';
       if (turn.mustExchange) return 'Vous devez d’abord échanger des cartes (5 cartes ou plus)';
       if (count > turn.reinforcements) return 'Pas assez de renforts';
       if (turn.pendingOccupy) return 'Terminez d’abord l’occupation du territoire conquis';
       return null;
     }
     case 'EXCHANGE_CARDS': {
-      if (turn.phase !== 'reinforce' && turn.phase !== 'attack') return 'Échange impossible dans cette phase';
-      if (turn.phase === 'attack' && player.cards.length < 6 && !turn.mustExchange)
-        return 'En phase d’attaque, l’échange n’est possible qu’avec 6 cartes ou plus';
+      // Même raison : l'échange se fait en phase de renfort, jamais en pleine attaque.
+      if (turn.phase !== 'reinforce') return 'Les cartes s’échangent uniquement en phase de renfort, en début de tour';
       if (turn.pendingOccupy) return 'Terminez d’abord l’occupation du territoire conquis';
       const ids = action.cardIds;
       if (!Array.isArray(ids) || ids.length !== 3 || new Set(ids).size !== 3) return 'Sélectionnez 3 cartes différentes';
@@ -477,7 +478,8 @@ function attack(state, action, emit) {
       state.cards.discard.push(...defender.cards);
       defender.cards = [];
       emit({ type: 'PLAYER_ELIMINATED', playerId: defenderId, by: action.playerId, cardTaken: !!taken });
-      if (attacker.cards.length >= 6) turn.mustExchange = true;
+      // Pas d'échange forcé en pleine attaque : la carte héritée sera échangée
+      // au début du tour suivant, comme le reste de la main.
     }
 
     checkVictory(state, emit);
@@ -521,7 +523,9 @@ export function possibleMoves(state, playerId) {
   const turn = state.turn;
   const owned = ownedTerritories(state, playerId);
 
-  if (turn.reinforcements > 0 && !turn.mustExchange && !turn.pendingOccupy) out.canPlace = owned;
+  // Placement uniquement pendant le placement initial et la phase de renfort
+  const canPlacePhase = turn.phase === 'setup' || turn.phase === 'reinforce';
+  if (canPlacePhase && turn.reinforcements > 0 && !turn.mustExchange && !turn.pendingOccupy) out.canPlace = owned;
 
   if (turn.phase === 'attack' && !turn.pendingOccupy && !turn.mustExchange && turn.reinforcements === 0) {
     for (const from of owned) {

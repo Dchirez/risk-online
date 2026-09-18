@@ -54,10 +54,15 @@ export function findValidSets(hand) {
 
 /**
  * Bonus de troupes pour le n-ième échange de la partie (n commence à 0) :
- * 4, 6, 8, 10, 12, 15, puis +5 à chaque fois.
+ * 4, 6, 8, 10, 12, puis 15 pour tous les suivants.
+ *
+ * Le barème est volontairement **plafonné** : dans la version classique il montait
+ * de 5 en 5 sans limite, et un seul échange de fin de partie rapportait plus que
+ * tous les continents réunis, ce qui décidait la partie à la place de la carte.
  */
+export const EXCHANGE_TABLE = Object.freeze([4, 6, 8, 10, 12, 15]);
+export const EXCHANGE_MAX = EXCHANGE_TABLE[EXCHANGE_TABLE.length - 1];
+
 export function exchangeBonus(exchangeIndex) {
-  const table = [4, 6, 8, 10, 12, 15];
-  if (exchangeIndex < table.length) return table[exchangeIndex];
-  return 15 + 5 * (exchangeIndex - table.length + 1);
+  return EXCHANGE_TABLE[exchangeIndex] ?? EXCHANGE_MAX;
 }

@@ -5,7 +5,7 @@
  */
 import { mapOf } from '../core/map.js';
 import { PHASE_LABELS, playerHex, computeReinforcements, continentsOwned, ownedTerritories, getPlayer } from '../core/state.js';
-import { findValidSets, SYMBOL_LABELS } from '../core/cards.js';
+import { findValidSets, SYMBOL_LABELS, exchangeBonus } from '../core/cards.js';
 import { possibleMoves } from '../core/rules.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -101,7 +101,7 @@ export class PanelsView {
         <div class="row">Troupes à placer : <span class="big">${turn.reinforcements}</span>
         ${myTurn ? '<button class="btn small" data-act="auto-place">Placer automatiquement</button>' : ''}</div>
         ${myTurn ? '<div class="hint">Cliquez sur l’un de vos territoires (surlignés).</div>' : ''}`;
-    } else if (phase === 'reinforce' || (phase === 'attack' && turn.reinforcements > 0)) {
+    } else if (phase === 'reinforce') {
       const d = turn.reinforcementDetail;
       const detail = d ? `<div class="hint">${d.base} (territoires) + ${d.bonus} (continents)${state.cards.exchanges ? '' : ''}</div>` : '';
       body = `<div class="row">Renforts à placer : <span class="big">${turn.reinforcements}</span></div>${detail}
@@ -127,7 +127,6 @@ export class PanelsView {
   attackBody(state, ui, myTurn) {
     const turn = state.turn;
     let html = '';
-    if (turn.mustExchange) html += '<div class="error small">6 cartes ou plus : échangez une combinaison pour continuer.</div>';
     if (turn.pendingOccupy && myTurn) {
       const o = turn.pendingOccupy;
       html += `<div class="row">Conquête de <b>${esc(tname(o.to))}</b> ! <button class="btn primary" data-act="occupy">Déplacer des troupes (${o.min}–${o.max})</button></div>`;
@@ -193,7 +192,7 @@ export class PanelsView {
     const selected = [...ui.selectedCards];
     const selCards = selected.map((id) => me.cards.find((c) => c.id === id)).filter(Boolean);
     const canExchange = myTurn && selCards.length === 3 && sets.some((s) => s.every((c) => selected.includes(c.id)));
-    const phaseOk = state.turn && (state.turn.phase === 'reinforce' || (state.turn.phase === 'attack' && me.cards.length >= 6));
+    const phaseOk = state.turn && state.turn.phase === 'reinforce'; // échange uniquement en début de tour
     const cards = me.cards
       .map((c) => {
         const owned = c.territory && state.territories[c.territory].owner === me.id;
@@ -215,7 +214,7 @@ export class PanelsView {
     const next = state.cards.exchanges;
     return `<div class="panel"><h3>Mes cartes (${me.cards.length})</h3>
       ${me.cards.length ? `<div class="cards">${cards}</div>` : '<div class="hint">Conquérez au moins un territoire dans un tour pour piocher une carte.</div>'}
-      ${me.cards.length >= 3 ? `<div class="row"><button class="btn small primary" data-act="exchange" ${canExchange && phaseOk ? '' : 'disabled'}>Échanger (+${[4, 6, 8, 10, 12, 15][next] ?? 15 + 5 * (next - 5)} troupes)</button>
+      ${me.cards.length >= 3 ? `<div class="row"><button class="btn small primary" data-act="exchange" ${canExchange && phaseOk ? '' : 'disabled'}>Échanger (+${exchangeBonus(next)} troupes)</button>
         <span class="hint">${sets.length ? `${sets.length} combinaison(s) possible(s)` : 'Aucune combinaison valide'}</span></div>` : ''}
     </div>`;
   }
