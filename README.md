@@ -42,11 +42,13 @@ serveur WebSocket se branchera plus tard sans modifier l'interface :
 - Placement initial (territoires distribués, puis 3 troupes par tour) ; troupes de
   départ proportionnelles au nombre de territoires.
 - Renforts : max(3, territoires ÷ 3) + continents ; cartes échangeables
-  (3 identiques ou 3 différentes, jokers), bonus 4-6-8-10-12-15 puis +5,
+  (3 identiques ou 3 différentes, jokers), bonus **plafonné** 4-6-8-10-12 puis 15,
   +2 sur un territoire possédé figurant sur les cartes ; échange obligatoire à 5 cartes.
+  Renforts et échanges **uniquement en phase de renfort**, jamais en pleine attaque.
 - Attaque : 1 à 3 dés contre 1 à 2, égalité au défenseur, occupation après
-  conquête (au moins autant de troupes que de dés), élimination = récupération
-  des cartes, une carte piochée par tour avec conquête.
+  conquête (au moins autant de troupes que de dés), **une seule carte piochée par
+  tour** quel que soit le nombre de conquêtes, et éliminer un joueur ne rapporte
+  qu'**une** de ses cartes (le reste à la défausse).
 - Déplacement de fin de tour en chaîne à travers ses territoires.
 - Bots : jouent les places vides et remplacent un humain déconnecté (15 s).
 - Chat : `@pseudo` mention (surlignée), `#pseudo` message privé, historique conservé.
@@ -81,9 +83,6 @@ test/                     tests Node (`node --test`)
   carte, les troupes, le journal et le chat, mais aucune main de joueur, et ne peut
   pas jouer. Il apparaît dans la liste des joueurs et reste joignable par `@pseudo`
   et `#pseudo`. Un joueur éliminé garde sa place et continue de suivre la partie.
-- Anti-boule de neige : **une seule carte territoire par tour**, quel que soit le
-  nombre de conquêtes, et éliminer un joueur ne rapporte qu'**une** de ses cartes
-  (tirée au hasard), le reste partant à la défausse.
 - Pause : si plus personne n'est connecté, les bots s'arrêtent ; la partie reprend
   au retour du premier joueur. Côté serveur, les parties sont sauvegardées sur disque
   (rechargées au redémarrage), conservées 96 h sans joueur, supprimées dès la fin.

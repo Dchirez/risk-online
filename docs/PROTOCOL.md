@@ -49,8 +49,8 @@ Codes d'erreur : `GAME_NOT_FOUND`, `GAME_FULL`, `NAME_TAKEN`, `INVALID_NAME`,
 Le champ `playerId` est **ajouté par l'hôte** à partir de la connexion.
 
 ```jsonc
-{ "type": "PLACE_TROOPS", "territory": "alaska", "count": 3 }   // placement initial / renforts
-{ "type": "EXCHANGE_CARDS", "cardIds": ["c_alaska", "c_peru", "c_joker_1"] }
+{ "type": "PLACE_TROOPS", "territory": "alaska", "count": 3 }   // phases setup et reinforce uniquement
+{ "type": "EXCHANGE_CARDS", "cardIds": ["c_alaska", "c_peru", "c_joker_1"] } // phase reinforce uniquement
 { "type": "END_PHASE" }                                          // renfort→attaque→déplacement→fin de tour
 { "type": "ATTACK", "from": "alaska", "to": "kamchatka", "dice": 3 }
 { "type": "OCCUPY", "count": 5 }                                 // après conquête : total de troupes envoyées

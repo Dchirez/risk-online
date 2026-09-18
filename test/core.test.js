@@ -78,10 +78,12 @@ test('cartes : combinaisons valides et bonus progressifs', () => {
   assert.ok(!isValidSet([c('infantry'), c('infantry'), c('cavalry')]));
   assert.ok(isValidSet([c('infantry'), c('infantry'), c('joker')]));
   assert.ok(isValidSet([c('infantry'), c('cavalry'), c('joker')]));
+  // Barème plafonné : plus d'escalade infinie en fin de partie
   assert.equal(exchangeBonus(0), 4);
+  assert.equal(exchangeBonus(4), 12);
   assert.equal(exchangeBonus(5), 15);
-  assert.equal(exchangeBonus(6), 20);
-  assert.equal(exchangeBonus(7), 25);
+  assert.equal(exchangeBonus(6), 15);
+  assert.equal(exchangeBonus(20), 15);
   const [deck] = createDeck(createRng(1), getMap('world'));
   assert.equal(deck.length, TERRITORY_IDS.length + 2);
   assert.equal(deck.filter((c) => c.symbol === 'joker').length, 2);
@@ -401,4 +403,38 @@ test('élimination : l’attaquant ne récupère qu’une carte, le reste va à 
   assert.equal(state.cards.discard.length, discardBefore + 4, 'les 4 autres cartes sont défaussées');
   const totalAfter = state.players.reduce((s, p) => s + p.cards.length, 0) + state.cards.deck.length + state.cards.discard.length;
   assert.equal(totalAfter, totalBefore, 'aucune carte perdue');
+});
+
+test('aucun renfort ni échange en pleine attaque : tout se pose en début de tour', () => {
+  let state = toAttackPhase(21);
+  const map = getMap(state.mapId);
+  const me = state.turn.playerId;
+  const player = state.players.find((p) => p.id === me);
+  const mine = map.TERRITORY_IDS.filter((t) => state.territories[t].owner === me);
+
+  // Même avec des renforts en poche et une main complète, rien ne passe en phase d'attaque
+  state.turn.reinforcements = 5;
+  player.cards = [
+    { id: 'k1', symbol: 'infantry', territory: mine[0] },
+    { id: 'k2', symbol: 'cavalry', territory: mine[1] },
+    { id: 'k3', symbol: 'artillery', territory: mine[2] },
+  ];
+  assert.equal(
+    validateAction(state, { type: 'PLACE_TROOPS', playerId: me, territory: mine[0], count: 1 }),
+    'Les renforts se placent uniquement en début de tour, avant d’attaquer',
+  );
+  assert.equal(
+    validateAction(state, { type: 'EXCHANGE_CARDS', playerId: me, cardIds: ['k1', 'k2', 'k3'] }),
+    'Les cartes s’échangent uniquement en phase de renfort, en début de tour',
+  );
+  assert.deepEqual(possibleMoves(state, me).canPlace, [], 'aucun territoire proposé au placement');
+
+  // Les deux sont possibles en phase de renfort
+  state.turn.phase = 'reinforce';
+  assert.equal(validateAction(state, { type: 'PLACE_TROOPS', playerId: me, territory: mine[0], count: 1 }), null);
+  assert.equal(validateAction(state, { type: 'EXCHANGE_CARDS', playerId: me, cardIds: ['k1', 'k2', 'k3'] }), null);
+  assert.ok(possibleMoves(state, me).canPlace.length > 0);
+
+  // Et on ne peut pas passer à l'attaque en gardant des renforts en réserve
+  assert.equal(validateAction(state, { type: 'END_PHASE', playerId: me }), 'Placez d’abord tous vos renforts');
 });
