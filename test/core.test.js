@@ -320,6 +320,24 @@ test('Terre du Milieu : montagnes infranchissables, entrées du Mordor, partie c
   assert.ok(m.areAdjacent('ithilien', 'minas_morgul'));
   assert.ok(m.areAdjacent('khand', 'nurn'));
   assert.ok(m.areAdjacent('umbar', 'dol_amroth'));
+  // Frontières bien visibles et sans montagne, longtemps injouables (détection
+  // d'adjacence par sommets identiques) : elles doivent rester attaquables.
+  for (const [a, b] of [
+    ['gorgoroth', 'mount_doom'],
+    ['helms_deep', 'westfold'],
+    ['dunharrow', 'helms_deep'],
+    ['fornost', 'shire'],
+    ['mithlond', 'shire'],
+    ['esgaroth', 'north_mirkwood'],
+    ['anduin_valley', 'north_mirkwood'],
+    ['belfalas', 'lossarnach'],
+    ['lebennin', 'minas_tirith'],
+    ['harad', 'harondor'],
+    ['brown_lands', 'wold'],
+    ['rhun_hills', 'rhun_plains'],
+  ]) {
+    assert.ok(m.areAdjacent(a, b), `${a} devrait être attaquable depuis ${b}`);
+  }
   let { state } = applyAction(lobbyWith(6, 21, 'middle_earth'), { type: 'START_GAME' });
   assert.equal(state.mapId, 'middle_earth');
   assert.equal(Object.keys(state.territories).length, m.TERRITORY_IDS.length);

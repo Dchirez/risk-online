@@ -251,28 +251,64 @@ const polysById = {};
 for (let i = 0; i < T.length; i++) polysById[T[i].id] = buildCell(i);
 
 // ═══════════════════════════ Adjacences ═══════════════════════════
-// Deux territoires sont voisins s'ils partagent au moins 3 points de contour.
-const key = ([x, y]) => `${Math.round(x * 2)}:${Math.round(y * 2)}`;
-const owners = new Map();
-for (const terr of T) for (const poly of polysById[terr.id]) for (const ring of poly) for (const p of ring) {
-  const k = key(p);
-  if (!owners.has(k)) owners.set(k, new Set());
-  owners.get(k).add(terr.id);
-}
-const shared = new Map();
-for (const set of owners.values()) {
-  if (set.size < 2) continue;
-  const ids = [...set];
-  for (const a of ids) for (const b of ids) if (a < b) {
-    const k = `${a}|${b}`;
-    shared.set(k, (shared.get(k) ?? 0) + 1);
+// Deux territoires sont voisins si leurs contours se longent sur au moins
+// MIN_BORDER pixels. On mesure par PROXIMITÉ et non par sommets identiques :
+// le rognage des cellules sur la côte décale légèrement les points d'un côté à
+// l'autre d'une même frontière, ce qui faisait manquer de vraies frontières.
+const SAMPLE_STEP = 2; // pas d'échantillonnage du contour (px)
+const TOUCH_TOL = 2.5; // deux points plus proches que ça sont sur la même frontière
+const MIN_BORDER = 12; // en deçà, simple contact de coin : pas une frontière jouable
+
+/** Contour d'un territoire, rééchantillonné à pas régulier. */
+function outlinePoints(id) {
+  const pts = [];
+  for (const poly of polysById[id]) for (const ring of poly) {
+    for (let i = 0; i < ring.length; i++) {
+      const [x1, y1] = ring[i];
+      const [x2, y2] = ring[(i + 1) % ring.length];
+      const d = Math.hypot(x2 - x1, y2 - y1);
+      const n = Math.max(1, Math.ceil(d / SAMPLE_STEP));
+      for (let k = 0; k < n; k++) pts.push([x1 + ((x2 - x1) * k) / n, y1 + ((y2 - y1) * k) / n]);
+    }
   }
+  return pts;
 }
+const outlines = Object.fromEntries(T.map((t) => [t.id, outlinePoints(t.id)]));
+
+// Index spatial des points de contour, pour ne comparer que le voisinage immédiat
+const cellOf = (x, y) => `${Math.floor(x / TOUCH_TOL)}:${Math.floor(y / TOUCH_TOL)}`;
+const grid = new Map();
+for (const t of T) for (const [x, y] of outlines[t.id]) {
+  const k = cellOf(x, y);
+  if (!grid.has(k)) grid.set(k, []);
+  grid.get(k).push({ id: t.id, x, y });
+}
+/** Territoires (hors `self`) ayant un point de contour à moins de TOUCH_TOL de (x, y). */
+function touchingAt(x, y, self) {
+  const cx = Math.floor(x / TOUCH_TOL);
+  const cy = Math.floor(y / TOUCH_TOL);
+  const out = new Set();
+  for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+    for (const q of grid.get(`${cx + dx}:${cy + dy}`) ?? []) {
+      if (q.id !== self && Math.hypot(q.x - x, q.y - y) <= TOUCH_TOL) out.add(q.id);
+    }
+  }
+  return out;
+}
+
+// Longueur de frontière commune ≈ (points de contact comptés des deux côtés / 2) × pas
+const shared = new Map();
+for (const t of T) for (const [x, y] of outlines[t.id]) for (const other of touchingAt(x, y, t.id)) {
+  const k = [t.id, other].sort().join('|');
+  shared.set(k, (shared.get(k) ?? 0) + 1);
+}
+const borderLength = new Map([...shared].map(([k, n]) => [k, (n / 2) * SAMPLE_STEP]));
+
 const neighbors = Object.fromEntries(T.map((x) => [x.id, new Set()]));
 const blockedSet = new Set(BLOCKED.map(([a, b]) => [a, b].sort().join('|')));
 const ridgePairs = [];
-for (const [k, n] of shared) {
-  if (n < 3) continue;
+for (const [k, len] of borderLength) {
+  if (len < MIN_BORDER) continue;
   const [a, b] = k.split('|');
   if (blockedSet.has(k)) {
     ridgePairs.push([a, b]);
@@ -281,6 +317,8 @@ for (const [k, n] of shared) {
   neighbors[a].add(b);
   neighbors[b].add(a);
 }
+const tooShort = [...borderLength].filter(([k, len]) => len > 0 && len < MIN_BORDER);
+if (tooShort.length) console.log(`Contacts de coin ignorés (< ${MIN_BORDER} px) : ${tooShort.map(([k, l]) => `${k} ${l.toFixed(0)}px`).join(', ')}`);
 const unusedBlocks = [...blockedSet].filter((k) => !ridgePairs.some(([a, b]) => `${a}|${b}` === k));
 if (unusedBlocks.length) console.warn('⚠ Blocages sans frontière commune :', unusedBlocks.join(' '));
 for (const [a, b] of ROUTES) {
@@ -290,10 +328,9 @@ for (const [a, b] of ROUTES) {
 }
 
 // ═══════════════════════════ Crêtes de montagnes ═══════════════════════════
-// Points du contour de A également présents dans B, groupés en polylignes consécutives.
+// Points du contour de A longeant celui de B (même tolérance que les adjacences),
+// groupés en polylignes consécutives.
 function ridgeFor(a, b) {
-  const inB = new Set();
-  for (const poly of polysById[b]) for (const ring of poly) for (const p of ring) inB.add(key(p));
   const lines = [];
   for (const poly of polysById[a]) {
     const ring = poly[0];
@@ -303,7 +340,7 @@ function ridgeFor(a, b) {
       run = [];
     };
     for (const p of ring) {
-      if (inB.has(key(p))) run.push(p);
+      if (touchingAt(p[0], p[1], a).has(b)) run.push(p);
       else flush();
     }
     flush();
@@ -360,6 +397,10 @@ const data = {
   continents,
   territories,
   seaRoutes: ROUTES,
+  // Paires qui partagent une frontière mais qu'une chaîne de montagnes rend
+  // infranchissable : l'audit de test s'en sert pour distinguer un mur voulu
+  // d'une adjacence oubliée.
+  blockedPairs: ridgePairs,
   ridges: ridges.map((line) => line.map(([x, y]) => [round(x), round(y)])),
   zones: ZONES.map((z) => ({ name: z.name, label: P(z.label).map(round), ring: z.ring.map(P).map(([x, y]) => [round(x), round(y)]) })),
   oceanLabels: OCEAN_LABELS.map(([name, x, y]) => ({ name, pos: P([x, y]).map(round) })),

@@ -37,6 +37,8 @@ serveur WebSocket se branchera plus tard sans modifier l'interface :
     défilement horizontal bouclé (Alaska ↔ Kamtchatka par le bord).
   - **Terre du Milieu** : 80 territoires, 10 régions (Eriador, Arnor, Rohan, Gondor,
     Mordor, Harad…), chaînes de montagnes infranchissables, Mordor à trois entrées.
+    Les adjacences sont mesurées sur la géométrie réellement dessinée : toute
+    frontière visible sans montagne est attaquable (vérifié par `test/map.test.js`).
   Bonus de région = 55 % du nombre de territoires (minimum 2), même règle partout.
   Zoom et déplacement sur les deux.
 - Placement initial (territoires distribués, puis 3 troupes par tour) ; troupes de
