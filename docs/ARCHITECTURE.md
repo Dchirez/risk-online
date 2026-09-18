@@ -144,6 +144,10 @@ adapter.close()
 - Mode spectateur : une connexion sans siège (`GameHost.onSpectate`). Côté cœur,
   rien ne change : `redactStateFor(state, null)` masque toutes les mains, et
   `computeHighlights` / `onTerritoryClick` ne réagissent déjà qu'au joueur actif.
+- Adjacences des cartes : mesurées par **proximité des contours** (longueur de
+  frontière commune ≥ 12 px), pas par sommets identiques — le rognage des cellules
+  sur la côte décale les points d'un côté à l'autre d'une même frontière.
+  `test/map.test.js` rejoue cet audit sur les deux cartes à chaque `npm test`.
 - `rules.js` : panneau d'aide contextuel (règles de la phase en cours, règles
   générales), fermable, état mémorisé dans le navigateur.
 - `diceView.js` : animation des dés sur le plateau à chaque événement `COMBAT`
