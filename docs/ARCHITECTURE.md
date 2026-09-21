@@ -50,10 +50,14 @@ Trois couches strictement séparées :
   et sont exportées comme crêtes à dessiner (`ridges`). Carte non bouclée, avec des
   zones infranchissables décoratives (`zones`).
 - Bonus de continent, même règle pour toutes les cartes : `max(2, round(n × 0,55))`.
-- **`dice.js`** : RNG déterministe (mulberry32) stocké dans l'état → même graine,
-  même partie ; `resolveCombat` compare les dés par paires, égalité au défenseur.
+- **`random.js`** : aléa cryptographique (`crypto.getRandomValues`, échec fermé) et
+  bloc ChaCha20 (RFC 8439).
+- **`dice.js`** : générateur de la partie = ChaCha20 en mode compteur, clé de
+  256 bits (cryptographique en partie réelle, dérivée d'une graine dans les tests),
+  stocké dans l'état et jamais envoyé ; `resolveCombat` compare les dés par paires,
+  égalité au défenseur.
 - **`cards.js`** : paquet (42 + 2 jokers), `isValidSet`, `findValidSets`,
-  `exchangeBonus` (4, 6, 8, 10, 12, 15, +5…).
+  `exchangeBonus` (4, 6, 8, 10, 12, puis 15 plafonné).
 - **`state.js`** : structure `GameState` (JSON pur, sérialisable), helpers de
   lecture (`computeReinforcements`, `continentsOwned`, `connectedOwned`…) et
   **`redactStateFor`** qui produit la vue envoyée à chaque joueur (cartes des

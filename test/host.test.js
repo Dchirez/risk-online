@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GameHost } from '../src/net/host.js';
 import { getPlayer } from '../src/core/state.js';
+import { decideBotAction } from '../src/core/bot.js';
 
 /** Timers contrôlés à la main : on avance le temps avec tick(). */
 function fakeTimers() {
@@ -56,9 +57,30 @@ function joinAndStart(h) {
   assert.equal(h.host.state.status, 'setup');
 }
 
+/**
+ * Fait jouer les humains (via le protocole, comme un vrai client) jusqu'à ce que
+ * ce soit le tour d'un bot. L'ordre de jeu est tiré au sort : on ne suppose rien.
+ */
+function playHumansUntilBotTurn(h) {
+  const clientOf = new Map();
+  for (const [cid, msgs] of h.outbox) {
+    const w = msgs.find((m) => m.type === 'welcome');
+    if (w) clientOf.set(w.playerId, cid);
+  }
+  for (let i = 0; i < 200; i++) {
+    const s = h.host.state;
+    const active = s.players.find((p) => p.id === s.turn.playerId);
+    if (active.type === 'bot') return;
+    const { playerId, ...action } = decideBotAction(s, active.id);
+    h.host.handleMessage(clientOf.get(active.id), { type: 'action', seq: i, action });
+  }
+  throw new Error('aucun tour de bot atteint');
+}
+
 test('pause : sans humain connecté les bots ne jouent pas, reprise au retour', () => {
   const h = makeHost();
   joinAndStart(h);
+  playHumansUntilBotTurn(h);
   const v0 = h.host.state.version;
   h.timers.tick(100); // les bots jouent tant qu'un humain est là
   assert.ok(h.host.state.version > v0);

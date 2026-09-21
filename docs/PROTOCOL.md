@@ -42,7 +42,21 @@ Détails `lobby` :
 | `pong`         | —                                                            |
 
 Codes d'erreur : `GAME_NOT_FOUND`, `GAME_FULL`, `NAME_TAKEN`, `INVALID_NAME`,
-`NOT_OWNER`, `ILLEGAL_ACTION`, `BAD_MESSAGE`, `SPECTATOR_ONLY`.
+`NOT_OWNER`, `ILLEGAL_ACTION`, `BAD_MESSAGE`, `SPECTATOR_ONLY`, `SEAT_TAKEN`
+(votre place a été reprise avec le jeton d'origine), `RATE_LIMITED` (trop de
+messages), `SERVER_FULL` (nombre maximal de parties atteint).
+
+**Règles de format imposées par l'hôte** (voir docs/SECURITE.md) :
+- un message est un objet JSON texte de 32 Ko au plus ; `null`, un nombre ou un
+  tableau sont refusés (`BAD_MESSAGE`) ;
+- `action.type` ∈ `PLACE_TROOPS`, `EXCHANGE_CARDS`, `ATTACK`, `OCCUPY`,
+  `END_PHASE`, `FORTIFY` ; tout autre type est refusé (`ILLEGAL_ACTION`) ;
+- `count` et `dice` sont des **entiers JSON** (pas de texte : `"3"` est refusé) ;
+  `territory`, `from`, `to` et les `cardIds` sont des **chaînes** ;
+- `create.settings` : seuls `maxPlayers` (entier 5 à 7), `botDelayMs` (0 à 5000)
+  et `mapId` sont lus ; `seed`, `id` et tout autre champ sont ignorés ;
+- débit par connexion : 30 messages/s (rafale 60), chat et commandes 1/s
+  (rafale 8) ; au-delà `RATE_LIMITED`, puis fermeture (code 1008).
 
 ## 3. Actions de jeu (`action.action`)
 
@@ -120,7 +134,8 @@ Structure complète : voir l'en-tête de `src/core/state.js`.
 - 15 s plus tard (`TAKEOVER_DELAY_MS`), un bot prend le contrôle
   (`controlledByBot=true`, `player{op:'bot_takeover'}`) : la partie ne bloque jamais.
 - Le joueur peut revenir à tout moment avec son `token` (`join` + `token`) :
-  il reprend la main, `player{op:'reconnected'}`.
+  il reprend la main, `player{op:'reconnected'}`. Jeton : `tok_` + 32 caractères
+  hexadécimaux (128 bits, générateur cryptographique), comparé à l'identique.
 - Dans le lobby, une déconnexion libère simplement la place.
 - **Pause** : quand plus aucun humain n'est connecté, l'hôte ne fait plus jouer les
   bots (message système « Partie en pause »). Au retour d'un joueur, la partie
@@ -135,8 +150,10 @@ Structure complète : voir l'en-tête de `src/core/state.js`.
 Si un `join` arrive **sans jeton valide** alors que la partie a commencé, l'hôte
 cherche un joueur humain portant le même pseudo (insensible à la casse) dont la
 connexion est perdue (onglet fermé, remplacé par un bot…). S'il existe, la place
-lui est rendue : nouveau jeton, `welcome`, `player{op:'reconnected'}`, et le bot
-rend la main. Sinon : `error{code:'NAME_TAKEN'}` (pseudo déjà connecté) ou
+lui est rendue avec un **jeton de reprise** distinct : `welcome`,
+`player{op:'reconnected'}`, et le bot rend la main. Le jeton d'origine reste
+valide et prioritaire : s'il revient, il révoque les jetons de reprise et le
+client qui occupait la place reçoit `error{code:'SEAT_TAKEN'}`. Sinon : `error{code:'NAME_TAKEN'}` (pseudo déjà connecté) ou
 `error{code:'GAME_FULL'}` (partie commencée, aucun siège de ce nom).
 
 ## 7. Mode spectateur

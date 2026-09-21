@@ -12,14 +12,19 @@
  * joueur. Les bots n'ont pas de client.
  */
 import { createLobbyState, getPlayer, redactStateFor, alivePlayers } from '../core/state.js';
-import { applyAction, validateAction } from '../core/rules.js';
+import { createRng, isValidRng } from '../core/dice.js';
+import { applyAction, validateAction, PLAYER_ACTION_TYPES } from '../core/rules.js';
 import { decideBotAction } from '../core/bot.js';
-import { C2S, S2C, ERROR_CODES, isValidName, parseChat, canSeeChat, randomId } from './protocol.js';
+import { C2S, S2C, ERROR_CODES, isValidName, parseChat, canSeeChat, randomId, newToken, sanitizeCreateSettings } from './protocol.js';
 
 const BOT_NAMES = ['Napoléon', 'Sun_Tzu', 'Hannibal', 'Jeanne', 'Gengis', 'Cléopâtre', 'Alexandre', 'Boudica'];
 
 /** Délai avant qu'un bot ne remplace un humain déconnecté (ms). */
 const TAKEOVER_DELAY_MS = 15000;
+/** Jetons de reprise « par pseudo » conservés par place (les plus récents). */
+const MAX_CLAIMS = 3;
+/** Format d'un code de partie (valide aussi les sauvegardes relues sur disque). */
+const GAME_ID_REGEX = /^[A-Z0-9]{6}$/;
 /** Nombre maximal de messages de chat conservés (mémoire et sauvegarde). */
 const MAX_CHAT = 400;
 /** Sans battement de cœur pendant ce délai, le client est considéré déconnecté. */
@@ -39,11 +44,22 @@ export class GameHost {
     this.inviteUrl = inviteUrl;
     this.sendTo = sendTo;
     this.timers = timers ?? { setTimeout: (...a) => setTimeout(...a), clearTimeout: (...a) => clearTimeout(...a) };
-    this.state = createLobbyState({ id: gameId, ...settings });
+    // Réglages de jeu bornés (joueurs, vitesse des bots, carte). `seed` reste
+    // accepté ici pour les tests : c'est au SERVEUR de ne jamais le transmettre
+    // depuis un client (sanitizeCreateSettings). L'identifiant est imposé en
+    // dernier : un réglage `id` ne peut plus écraser le code de partie.
+    this.state = createLobbyState({ ...settings, ...sanitizeCreateSettings(settings), id: gameId });
     this.ownerId = null; // joueur créateur (droits de lobby)
     /** @type {Map<string,{playerId:string|null,lastSeen:number}>} */
     this.clients = new Map();
-    /** @type {Map<string,{token:string,clientId:string|null,takeoverTimer:any}>} */
+    /**
+     * Places des humains. `token` = jeton d'origine, remis à l'inscription ; il
+     * prime toujours. `claims` = jetons remis lors d'une reprise « par pseudo »
+     * (autre appareil, navigateur vidé) ; ils sont révoqués dès que le jeton
+     * d'origine revient, pour qu'un inconnu qui a tapé le bon pseudo pendant une
+     * coupure ne garde jamais la place face à son vrai titulaire.
+     * @type {Map<string,{token:string,claims:string[],clientId:string|null,takeoverTimer:any}>}
+     */
     this.seats = new Map(); // par playerId (humains)
     this.chat = []; // historique complet (l'hôte filtre à l'envoi)
     this.botTimer = null;
@@ -180,12 +196,12 @@ export class GameHost {
 
   onJoin(clientId, msg) {
     const client = this.clients.get(clientId);
-    // Reconnexion par jeton
-    if (msg.token) {
+    // Reconnexion par jeton : comparaison exacte, jeton d'origine ou jeton de reprise encore valide
+    if (typeof msg.token === 'string' && msg.token) {
       for (const [playerId, seat] of this.seats) {
-        if (seat.token === msg.token && getPlayer(this.state, playerId)) {
-          return this.reconnect(clientId, playerId, seat);
-        }
+        if (!getPlayer(this.state, playerId)) continue;
+        if (seat.token === msg.token) return this.reconnect(clientId, playerId, seat, { token: seat.token, original: true });
+        if (seat.claims.includes(msg.token)) return this.reconnect(clientId, playerId, seat, { token: msg.token, original: false });
       }
     }
     if (client.playerId) return this.error(clientId, ERROR_CODES.BAD_MESSAGE, 'Déjà dans la partie');
@@ -197,11 +213,19 @@ export class GameHost {
       const seatPlayer = this.state.players.find((p) => p.type === 'human' && p.name.toLowerCase() === wanted);
       const seat = seatPlayer && this.seats.get(seatPlayer.id);
       if (seat && (!seat.clientId || !this.clients.has(seat.clientId))) {
-        seat.token = randomId('tok'); // nouveau jeton : l'ancien onglet ne peut plus reprendre la place
-        return this.reconnect(clientId, seatPlayer.id, seat);
+        // Jeton de reprise distinct : le jeton d'origine reste valide et prioritaire,
+        // et n'est jamais révélé à celui qui reprend la place par son pseudo.
+        const claim = newToken();
+        seat.claims = [...seat.claims, claim].slice(-MAX_CLAIMS);
+        return this.reconnect(clientId, seatPlayer.id, seat, { token: claim, original: false });
       }
       if (seatPlayer) return this.error(clientId, ERROR_CODES.NAME_TAKEN, `${seatPlayer.name} est déjà connecté·e à cette partie`);
       return this.error(clientId, ERROR_CODES.GAME_FULL, 'La partie a déjà commencé. Entrez le pseudo que vous aviez pour reprendre votre place, ou regardez en spectateur.');
+    }
+    // Un pseudo déjà porté par un spectateur est refusé : sinon les messages
+    // #privés destinés à l'un pouvaient arriver à l'autre.
+    if (this.spectatorList().some((sp) => sp.name.toLowerCase() === msg.playerName.toLowerCase())) {
+      return this.error(clientId, ERROR_CODES.NAME_TAKEN, 'Ce pseudo est déjà utilisé dans cette partie');
     }
     const playerId = randomId('p');
     const err = validateAction(this.state, { type: 'ADD_PLAYER', player: { id: playerId, name: msg.playerName, type: 'human' } });
@@ -210,8 +234,8 @@ export class GameHost {
     this.apply({ type: 'ADD_PLAYER', player: { id: playerId, name: msg.playerName, type: 'human' } });
     this.apply({ type: 'SET_CONNECTED', playerId, connected: true });
     if (!this.ownerId) this.ownerId = playerId;
-    const token = randomId('tok');
-    this.seats.set(playerId, { token, clientId, takeoverTimer: null });
+    const token = newToken();
+    this.seats.set(playerId, { token, claims: [], clientId, takeoverTimer: null });
     client.playerId = playerId;
 
     this.sendTo(clientId, { type: S2C.WELCOME, playerId, token, gameId: this.gameId, inviteUrl: this.inviteUrl, isOwner: this.ownerId === playerId });
@@ -221,10 +245,18 @@ export class GameHost {
     this.broadcastState();
   }
 
-  reconnect(clientId, playerId, seat) {
-    // Si un autre client tient encore la place (ex. ancien onglet), on le remplace
+  /**
+   * Rattache une connexion à une place.
+   * @param {{token:string, original:boolean}} auth  jeton présenté (renvoyé tel quel, jamais un autre)
+   */
+  reconnect(clientId, playerId, seat, auth) {
+    // Le jeton d'origine révoque toutes les reprises « par pseudo » ; un jeton de
+    // reprise révoque les autres reprises (le dernier arrivé légitime l'emporte).
+    seat.claims = auth.original ? [] : seat.claims.filter((c) => c === auth.token);
+    // Si un autre client tient encore la place (ancien onglet, ou intrus), on le déloge et on le prévient
     if (seat.clientId && seat.clientId !== clientId && this.clients.has(seat.clientId)) {
       this.clients.get(seat.clientId).playerId = null;
+      this.error(seat.clientId, ERROR_CODES.SEAT_TAKEN, 'Votre place a été reprise depuis un autre appareil.');
     }
     const wasPaused = this.paused;
     seat.clientId = clientId;
@@ -237,7 +269,7 @@ export class GameHost {
       this.systemChat('Reprise de la partie.');
       this.armTakeovers(); // les autres absents seront remplacés par des bots dans 15 s
     }
-    this.sendTo(clientId, { type: S2C.WELCOME, playerId, token: seat.token, gameId: this.gameId, inviteUrl: this.inviteUrl, isOwner: this.ownerId === playerId });
+    this.sendTo(clientId, { type: S2C.WELCOME, playerId, token: auth.token, gameId: this.gameId, inviteUrl: this.inviteUrl, isOwner: this.ownerId === playerId });
     this.sendChatHistory(clientId, playerId);
     this.broadcast({ type: S2C.PLAYER, op: 'reconnected', playerId });
     this.systemChat(`${getPlayer(this.state, playerId).name} est de retour.`);
@@ -293,9 +325,11 @@ export class GameHost {
         break;
       }
       case 'settings':
-        if (msg.maxPlayers >= 5 && msg.maxPlayers <= 7 && msg.maxPlayers >= this.state.players.length)
+        // Types stricts : un "6" en texte ou un 6.5 étaient acceptés et polluaient l'état
+        if (Number.isInteger(msg.maxPlayers) && msg.maxPlayers >= 5 && msg.maxPlayers <= 7 && msg.maxPlayers >= this.state.players.length)
           this.state.settings.maxPlayers = msg.maxPlayers;
-        if (Number.isFinite(msg.botDelayMs)) this.state.settings.botDelayMs = Math.max(0, Math.min(5000, msg.botDelayMs));
+        if (typeof msg.botDelayMs === 'number' && Number.isFinite(msg.botDelayMs))
+          this.state.settings.botDelayMs = Math.round(Math.max(0, Math.min(5000, msg.botDelayMs)));
         this.state.version += 1;
         this.onDirty?.();
         break;
@@ -326,7 +360,12 @@ export class GameHost {
     if (c.spectator) return this.error(clientId, ERROR_CODES.SPECTATOR_ONLY, 'Vous regardez la partie en spectateur : vous ne pouvez pas jouer.', msg.seq);
     const playerId = c.playerId;
     if (!playerId) return this.error(clientId, ERROR_CODES.BAD_MESSAGE, 'Rejoignez la partie d’abord', msg.seq);
-    const action = { ...msg.action, playerId }; // l'identité vient de la connexion, jamais du message
+    const raw = msg.action;
+    // Uniquement des coups de jeu : jamais d'action d'hôte (ajout de joueur, démarrage…)
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !PLAYER_ACTION_TYPES.includes(raw.type)) {
+      return this.error(clientId, ERROR_CODES.ILLEGAL_ACTION, 'Action inconnue', msg.seq);
+    }
+    const action = { ...raw, playerId }; // l'identité vient de la connexion, jamais du message
     const err = validateAction(this.state, action);
     if (err) return this.error(clientId, ERROR_CODES.ILLEGAL_ACTION, err, msg.seq);
     const events = this.apply(action);
@@ -639,7 +678,7 @@ export class GameHost {
       inviteUrl: this.inviteUrl,
       ownerId: this.ownerId,
       state: this.state,
-      seats: [...this.seats].map(([playerId, s]) => [playerId, { token: s.token }]),
+      seats: [...this.seats].map(([playerId, s]) => [playerId, { token: s.token, claims: s.claims }]),
       chat: this.chat,
       tempBots: [...this.tempBots],
       lastActivity: this.lastActivity,
@@ -653,13 +692,24 @@ export class GameHost {
    * retour d'un joueur, qui reprend sa place avec son jeton ou son pseudo.
    */
   static restore(snapshot, { sendTo, timers }) {
+    // La sauvegarde vient du disque du serveur, mais on reste prudent : le code
+    // sert à nommer le fichier, il ne doit jamais contenir de chemin (« ../ »).
+    if (typeof snapshot?.gameId !== 'string' || !GAME_ID_REGEX.test(snapshot.gameId)) throw new Error('Sauvegarde invalide : code de partie');
+    if (!snapshot.state || typeof snapshot.state !== 'object') throw new Error('Sauvegarde invalide : état absent');
     const host = new GameHost({ gameId: snapshot.gameId, inviteUrl: snapshot.inviteUrl, sendTo, timers });
     host.state = snapshot.state;
+    host.state.id = snapshot.gameId;
+    // Anciennes sauvegardes : générateur mulberry32 à graine horaire, prédictible.
+    // On le remplace par une clé cryptographique neuve (les dés à venir changent,
+    // personne ne pouvait légitimement s'appuyer dessus).
+    if (!isValidRng(host.state.rng)) host.state.rng = createRng();
     host.ownerId = snapshot.ownerId;
     host.chat = snapshot.chat ?? [];
     host.tempBots = new Set(snapshot.tempBots ?? []);
     host.lastActivity = snapshot.lastActivity ?? Date.now();
-    for (const [playerId, s] of snapshot.seats ?? []) host.seats.set(playerId, { token: s.token, clientId: null, takeoverTimer: null });
+    for (const [playerId, s] of snapshot.seats ?? []) {
+      host.seats.set(playerId, { token: s.token, claims: Array.isArray(s.claims) ? s.claims : [], clientId: null, takeoverTimer: null });
+    }
     for (const p of host.state.players) {
       if (p.type === 'human') {
         p.connected = false;

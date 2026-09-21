@@ -13,11 +13,15 @@ python -m http.server 5180
 puis ouvrir <http://localhost:5180>. (Tout serveur de fichiers statiques
 convient ; les modules ES exigent `http://`, pas `file://`.)
 
-Tests du cœur de jeu :
+Tests (règles, cartes, hôte, sécurité, serveur) :
 
 ```bash
 npm test
 ```
+
+Les tests de sécurité du serveur ouvrent de vraies connexions WebSocket et
+nécessitent sa dépendance : `cd server && npm install` (sinon ils sont ignorés).
+Détail des protections : [docs/SECURITE.md](docs/SECURITE.md).
 
 ## Jouer sans serveur (mode actuel)
 
@@ -62,11 +66,12 @@ index.html, css/          interface
 src/core/                 règles, carte, dés, cartes, état, IA (pur, testé)
 src/net/                  protocole, hôte de partie, adaptateurs réseau, client
 src/ui/                   écrans, carte SVG, panneaux, chat
-server/                   brouillon du serveur WebSocket (non déployé)
+server/                   serveur WebSocket (app.js = startServer testable, index.js = configuration)
 tools/build-map.mjs       génère src/core/maps/world.js depuis Natural Earth (cd tools && node build-map.mjs)
 tools/build-middle-earth.mjs  génère src/core/maps/middle_earth.js (territoires par points, cellules de Voronoï, montagnes)
 docs/ARCHITECTURE.md      architecture détaillée
 docs/PROTOCOL.md          contrat des messages réseau
+docs/SECURITE.md          modèle de menace, failles corrigées, défenses, risques résiduels
 test/                     tests Node (`node --test`)
 ```
 

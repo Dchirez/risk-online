@@ -53,8 +53,10 @@ export class ChatView {
    * @param {string} meId
    */
   render(messages, players, meId) {
-    const byId = Object.fromEntries(players.map((p) => [p.id, p]));
-    const byName = Object.fromEntries(players.map((p) => [p.name.toLowerCase(), p]));
+    // Map et non objet : avec un objet, « @constructor » ou « @toString » tombaient
+    // sur les propriétés héritées d'Object.prototype et s'affichaient « @Object »…
+    const byId = new Map(players.map((p) => [p.id, p]));
+    const byName = new Map(players.map((p) => [p.name.toLowerCase(), p]));
     const atBottom = this.list.scrollHeight - this.list.scrollTop - this.list.clientHeight < 40;
 
     this.list.innerHTML = messages
@@ -65,20 +67,20 @@ export class ChatView {
           const priv = m.kind === 'private' ? ' private' : '';
           return `<div class="msg system${priv}"><span class="time">${time}</span>${priv ? '🔒 ' : ''}${escapeHtml(m.text)}</div>`;
         }
-        const from = byId[m.from];
+        const from = byId.get(m.from);
         const color = from ? playerHex(from) : '#aaa';
         const cls = ['msg'];
         if (m.kind === 'private') cls.push('private');
         if (m.mentions.includes(meId) && m.from !== meId) cls.push('mentions-me');
         // Mise en évidence des @pseudo / #pseudo connus
         const html = escapeHtml(m.text).replace(/(^|[^A-Za-z0-9_])([@#])([A-Za-z0-9_\-]{2,16})/g, (all, pre, sym, name) => {
-          const p = byName[name.toLowerCase()];
+          const p = byName.get(name.toLowerCase());
           if (!p) return all;
           return `${pre}<span class="mention" style="color:${playerHex(p)}">${sym}${escapeHtml(p.name)}</span>`;
         });
         const lock = m.kind === 'private' ? `<span class="lock" title="Message privé">🔒 privé</span>` : '';
         const eye = m.spectator ? `<span class="lock" title="Spectateur">👁</span>` : '';
-        const toNames = m.kind === 'private' ? ` <span class="muted small">→ ${m.to.map((id) => escapeHtml(byId[id]?.name ?? '?')).join(', ')}</span>` : '';
+        const toNames = m.kind === 'private' ? ` <span class="muted small">→ ${m.to.map((id) => escapeHtml(byId.get(id)?.name ?? '?')).join(', ')}</span>` : '';
         return `<div class="${cls.join(' ')}"><span class="time">${time}</span>${lock}${eye}<span class="who" style="color:${color}">${escapeHtml(m.fromName)}</span>${toNames} : ${html}</div>`;
       })
       .join('');

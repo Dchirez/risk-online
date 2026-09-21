@@ -81,6 +81,8 @@ Variables d'environnement :
 |---|---|---|
 | `PORT` | port d'écoute WebSocket (à ne pas exposer directement : passer par le reverse proxy) | `8080` |
 | `FRONT_URL` | URL publique du site, utilisée pour fabriquer les liens d'invitation | `http://localhost:5180/` |
+| `ALLOWED_ORIGINS` | origines de navigateur supplémentaires autorisées, séparées par des virgules. Le site de `FRONT_URL` (avec et sans www) et localhost sont toujours autorisés | vide |
+| `MAX_GAMES` | nombre maximal de parties simultanées | `500` |
 | `DATA_DIR` | dossier des sauvegardes (un fichier JSON par partie) ; l'utilisateur du service doit pouvoir y écrire | `server/data` |
 | `RETENTION_HOURS` | durée de conservation d'une partie sans aucun joueur connecté | `96` (4 jours) |
 
@@ -157,6 +159,14 @@ risk.skayzax.fr {
 cd /opt/risk-online && git pull && sudo systemctl restart risk
 ```
 
+### Sécurité
+
+Le serveur filtre et borne tout ce qu'envoient les clients (taille, débit, types,
+origine du navigateur) ; détail et tests dans [SECURITE.md](SECURITE.md). Pour
+limiter aussi le débit par adresse IP, ajouter `limit_conn` / `limit_req` dans le
+bloc nginx (exemple dans SECURITE.md). Node 18 suffit : le serveur installe lui-même
+le générateur cryptographique qui lui manque.
+
 ### Sauvegarde et cycle de vie des parties
 
 - Chaque partie est écrite dans `DATA_DIR/games/<code>.json` à chaque changement
@@ -187,6 +197,7 @@ Erreurs fréquentes :
 |---|---|
 | « Connexion WebSocket impossible » | `wsUrl` faux, port fermé, ou `ws://` depuis une page HTTPS |
 | « Partie introuvable » | code erroné, partie terminée, ou expirée (96 h sans joueur) |
+| Personne ne peut se connecter, journal : `origine refusée : https://…` | le site est servi depuis une adresse différente de `FRONT_URL` : corriger `FRONT_URL` ou ajouter l'adresse dans `ALLOWED_ORIGINS` |
 | Les parties disparaissent au redémarrage | `DATA_DIR` non inscriptible : vérifier le journal (`[persist] échec de sauvegarde`) |
 | Les joueurs sont déconnectés au bout d'une minute | le proxy coupe les connexions inactives : augmenter `proxy_read_timeout` |
 | Le lien d'invitation pointe vers `localhost` | `FRONT_URL` non renseigné au lancement du serveur |

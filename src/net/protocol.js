@@ -6,6 +6,8 @@
  * Ce module est partagé par le client ET l'hôte : il doit rester pur
  * (pas de DOM, pas de Node).
  */
+import { secureRandomBytes } from '../core/random.js';
+import { MAP_CATALOG, DEFAULT_MAP_ID } from '../core/map.js';
 
 /** Messages envoyés par le client. */
 export const C2S = Object.freeze({
@@ -41,6 +43,9 @@ export const ERROR_CODES = Object.freeze({
   ILLEGAL_ACTION: 'ILLEGAL_ACTION',
   BAD_MESSAGE: 'BAD_MESSAGE',
   SPECTATOR_ONLY: 'SPECTATOR_ONLY', // action de joueur tentée depuis le mode spectateur
+  SEAT_TAKEN: 'SEAT_TAKEN', // votre place a été reprise depuis un autre appareil (jeton d'origine)
+  RATE_LIMITED: 'RATE_LIMITED', // trop de messages en peu de temps (serveur)
+  SERVER_FULL: 'SERVER_FULL', // nombre maximal de parties atteint (serveur)
 });
 
 /** Pseudo : 2 à 16 caractères alphanumériques / tiret bas (pas d'espace → mentions non ambiguës). */
@@ -80,14 +85,60 @@ export function canSeeChat(message, playerId) {
   return message.from === playerId || message.to.includes(playerId);
 }
 
-/** Génère un code de partie lisible (6 caractères sans ambiguïté O/0, I/1). */
+// ═══════════════════════════ Aléa : codes, identifiants, jetons ═══════════════════════════
+// Tout vient du générateur cryptographique (random.js), jamais de Math.random :
+// ses sorties se devinent à partir de quelques valeurs observées, or les
+// identifiants de joueurs et de messages sont visibles de tous. Avec l'ancien
+// code, observer ces identifiants permettait en principe de prédire le jeton de
+// reconnexion d'un autre joueur, donc de lui voler sa place.
+
+/** Alphabet des codes de partie : 32 symboles sans ambiguïté (ni O/0 ni I/1), 5 bits chacun. */
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+/** Code de partie lisible, 6 caractères (30 bits), tirage uniforme. */
 export function generateGameCode() {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 6; i++) code += alphabet[Math.floor(Math.random() * alphabet.length)];
-  return code;
+  // 32 divise 256 : `octet & 31` est parfaitement uniforme, sans biais de modulo.
+  return Array.from(secureRandomBytes(6), (b) => CODE_ALPHABET[b & 31]).join('');
 }
 
-export function randomId(prefix = 'id') {
-  return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+/** Taille d'un jeton de reconnexion : 16 octets = 128 bits, hors de portée d'une recherche exhaustive. */
+export const TOKEN_BYTES = 16;
+
+/**
+ * Identifiant aléatoire en hexadécimal, préfixé.
+ * `bytes` = 8 (64 bits) pour un identifiant public, TOKEN_BYTES pour un secret.
+ */
+export function randomId(prefix = 'id', bytes = 8) {
+  const hex = Array.from(secureRandomBytes(bytes), (b) => b.toString(16).padStart(2, '0')).join('');
+  return `${prefix}_${hex}`;
+}
+
+/** Jeton secret de reconnexion à une place. */
+export function newToken() {
+  return randomId('tok', TOKEN_BYTES);
+}
+
+// ═══════════════════════════ Réglages de création ═══════════════════════════
+
+export const PLAYER_RANGE = Object.freeze({ min: 5, max: 7, default: 6 });
+export const BOT_DELAY_RANGE = Object.freeze({ min: 0, max: 5000, default: 700 });
+
+/**
+ * Filtre les réglages envoyés par un client à la création d'une partie.
+ * Seuls trois champs sont retenus, validés et bornés. Tout le reste est écarté,
+ * en particulier `seed` (qui aurait permis de choisir, donc de connaître à
+ * l'avance, tous les dés de la partie) et `id` (qui écrasait le code de partie).
+ */
+export function sanitizeCreateSettings(raw) {
+  const src = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const maxPlayers =
+    Number.isInteger(src.maxPlayers) && src.maxPlayers >= PLAYER_RANGE.min && src.maxPlayers <= PLAYER_RANGE.max
+      ? src.maxPlayers
+      : PLAYER_RANGE.default;
+  const botDelayMs =
+    typeof src.botDelayMs === 'number' && Number.isFinite(src.botDelayMs)
+      ? Math.round(Math.min(BOT_DELAY_RANGE.max, Math.max(BOT_DELAY_RANGE.min, src.botDelayMs)))
+      : BOT_DELAY_RANGE.default;
+  const mapId = typeof src.mapId === 'string' && MAP_CATALOG.some((m) => m.id === src.mapId) ? src.mapId : DEFAULT_MAP_ID;
+  return { maxPlayers, botDelayMs, mapId };
 }

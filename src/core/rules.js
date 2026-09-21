@@ -45,7 +45,33 @@ import {
 
 const MAX_LOG = 80;
 
+/**
+ * Les seules actions qu'un CLIENT peut demander : les coups de jeu.
+ * ADD_PLAYER, REMOVE_PLAYER, SET_CONNECTED et START_GAME sont des actions d'hôte,
+ * déclenchées uniquement par des messages dédiés et contrôlés (salon, connexion).
+ * Historique : le canal `action` les acceptait toutes, si bien qu'un joueur qui
+ * n'était pas le créateur pouvait ajouter un joueur fantôme (partie bloquée à
+ * son tour) ou démarrer la partie à la place du créateur.
+ */
+export const PLAYER_ACTION_TYPES = Object.freeze(['PLACE_TROOPS', 'EXCHANGE_CARDS', 'ATTACK', 'OCCUPY', 'END_PHASE', 'FORTIFY']);
+
 // ═══════════════════════════════ Validation ═══════════════════════════════
+
+// ─────────────────── Validation stricte des champs venus du client ───────────────────
+// Les actions arrivent d'un client qu'on ne contrôle pas : JSON forgé à la main.
+// On n'accepte que le TYPE attendu, sans conversion implicite. Historique : un
+// nombre de troupes envoyé en texte (count: "5") passait la validation grâce à
+// Number(), puis `troupes += "5"` concaténait les chaînes : 4 troupes + "5"
+// donnaient "45" troupes.
+
+/** Identifiant de territoire valide : une chaîne, propre à la carte (jamais « __proto__ » ni « constructor »). */
+function isTerritoryId(state, id) {
+  return typeof id === 'string' && Object.hasOwn(state.territories, id);
+}
+/** Entier JavaScript réel (pas de chaîne, pas de tableau, pas de booléen). */
+function isInt(v) {
+  return typeof v === 'number' && Number.isInteger(v);
+}
 
 /** Renvoie null si l'action est légale, sinon un message d'erreur (français). */
 export function validateAction(state, action) {
@@ -88,11 +114,11 @@ export function validateAction(state, action) {
 
   switch (t) {
     case 'PLACE_TROOPS': {
+      if (!isTerritoryId(state, action.territory)) return 'Territoire inconnu';
       const terr = state.territories[action.territory];
-      if (!terr) return 'Territoire inconnu';
       if (terr.owner !== player.id) return 'Ce territoire ne vous appartient pas';
-      const count = Number(action.count);
-      if (!Number.isInteger(count) || count < 1) return 'Nombre de troupes invalide';
+      const count = action.count;
+      if (!isInt(count) || count < 1) return 'Nombre de troupes invalide';
       if (turn.phase === 'setup') {
         if (count > turn.reinforcements) return 'Pas assez de troupes à placer';
         return null;
@@ -111,6 +137,7 @@ export function validateAction(state, action) {
       if (turn.pendingOccupy) return 'Terminez d’abord l’occupation du territoire conquis';
       const ids = action.cardIds;
       if (!Array.isArray(ids) || ids.length !== 3 || new Set(ids).size !== 3) return 'Sélectionnez 3 cartes différentes';
+      if (!ids.every((id) => typeof id === 'string')) return 'Carte non possédée';
       const cards = ids.map((id) => player.cards.find((c) => c.id === id));
       if (cards.some((c) => !c)) return 'Carte non possédée';
       if (!isValidSet(cards)) return 'Combinaison invalide (3 identiques ou 3 différentes)';
@@ -128,36 +155,36 @@ export function validateAction(state, action) {
       if (turn.mustExchange) return 'Vous devez d’abord échanger des cartes';
       if (turn.pendingOccupy) return 'Terminez d’abord l’occupation du territoire conquis';
       if (turn.reinforcements > 0) return 'Placez d’abord vos renforts';
+      if (!isTerritoryId(state, action.from) || !isTerritoryId(state, action.to)) return 'Territoire inconnu';
       const from = state.territories[action.from];
       const to = state.territories[action.to];
-      if (!from || !to) return 'Territoire inconnu';
       if (from.owner !== player.id) return 'Le territoire attaquant ne vous appartient pas';
       if (to.owner === player.id) return 'Vous ne pouvez pas attaquer votre propre territoire';
       if (!mapOf(state).areAdjacent(action.from, action.to)) return 'Territoires non adjacents';
       if (from.troops < 2) return 'Il faut au moins 2 troupes pour attaquer';
-      const dice = Number(action.dice);
-      if (!Number.isInteger(dice) || dice < 1 || dice > 3) return 'Nombre de dés invalide';
+      const dice = action.dice;
+      if (!isInt(dice) || dice < 1 || dice > 3) return 'Nombre de dés invalide';
       if (dice > from.troops - 1) return 'Pas assez de troupes pour autant de dés';
       return null;
     }
     case 'OCCUPY': {
       if (!turn.pendingOccupy) return 'Aucune occupation en attente';
       const { min, max } = turn.pendingOccupy;
-      const count = Number(action.count);
-      if (!Number.isInteger(count) || count < min || count > max)
+      const count = action.count;
+      if (!isInt(count) || count < min || count > max)
         return `Déplacez entre ${min} et ${max} troupes`;
       return null;
     }
     case 'FORTIFY': {
       if (turn.phase !== 'fortify') return 'Vous n’êtes pas en phase de déplacement';
+      if (!isTerritoryId(state, action.from) || !isTerritoryId(state, action.to)) return 'Territoire inconnu';
       const from = state.territories[action.from];
       const to = state.territories[action.to];
-      if (!from || !to) return 'Territoire inconnu';
       if (from.owner !== player.id || to.owner !== player.id) return 'Les deux territoires doivent vous appartenir';
       if (action.from === action.to) return 'Choisissez deux territoires différents';
       if (!connectedOwned(state, action.from).includes(action.to)) return 'Territoires non reliés par vos territoires';
-      const count = Number(action.count);
-      if (!Number.isInteger(count) || count < 1 || count > from.troops - 1)
+      const count = action.count;
+      if (!isInt(count) || count < 1 || count > from.troops - 1)
         return 'Il faut laisser au moins 1 troupe sur le territoire de départ';
       return null;
     }
